@@ -1,0 +1,24 @@
+# Godot
+.godot/
+*.import
+export_presets.cfg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# Build outputs
+build/
+*.pck
+
+# Claude Code local settings
+.claude/
+
+# BMAD planning artifacts
+_bmad/
+_bmad-output/
