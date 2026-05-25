@@ -1,0 +1,41 @@
+{
+  "id": "norse",
+  "name": "Fire Meets Ice",
+  "order": 2,
+  "unlocked": true,
+  "background": "norse",
+  "palette": {
+    "bgTop": "#180a0a",
+    "bgBottom": "#5a2a1a",
+    "ground": "#2a1a14",
+    "groundAccent": "#6a3a20",
+    "fire": "#ff7733",
+    "fireHot": "#ffe7b0",
+    "obstacle": "#4a4a52",
+    "creature": "#3a8a5a",
+    "creatureAccent": "#8aff8a",
+    "accent": "#ffd060"
+  },
+  "fire": { "x": 360, "y": 880, "tapRadius": 200 },
+  "creature": { "x": 1500, "y": 360, "kind": "dragon", "size": 1.4 },
+  "obstacle": { "x": 920, "y": 560, "radius": 140 },
+  "sim": {
+    "diffusion": 0.07,
+    "dissipation": 0.008,
+    "sourceHeat": 14,
+    "targetRadius": 2,
+    "tapHeat": 26,
+    "dragHeat": 18,
+    "decayPerSec": 5
+  },
+  "win": {
+    "minHeat": 50,
+    "maxHeat": 70,
+    "dangerHeat": 85,
+    "sustainSeconds": 2.5,
+    "title": "AWAKENED",
+    "body": "You guided primordial fire around the boulder and stirred the sleeping dragon.",
+    "biologyLine": "You just routed a signal through a pathway. Your cells do this billions of times a day."
+  },
+  "hints": { "drag": "Drag from the fire, around the boulder, toward the dragon" }
+}

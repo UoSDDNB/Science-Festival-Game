@@ -16,6 +16,7 @@ var _has_pinched: bool = false
 var _current_hint: String = ""
 var _hint_visible: bool = false
 var _max_heat_reached: float = 0.0
+var drag_hint_text: String = "Drag from fire toward the dragon"
 
 # Visual elements
 var _hand_icon: Label
@@ -61,17 +62,17 @@ func _process(delta: float) -> void:
 	if not _has_tapped and _level_time > 4.0 and not _hints_shown.has("tap"):
 		_show_ghost_hand("tap", ".", "Tap the fire", 0.35, 0.78)
 
-	# Phase 2: Hold — tapping but not holding after 12s
-	elif _has_tapped and not _has_held and _level_time > 12.0 and not _hints_shown.has("hold"):
-		_show_ghost_hand("hold", ".", "Press and hold near the fire", 0.35, 0.73)
+	# Phase 2: Swirl/hold — tapping but not swirling after 8s
+	elif _has_tapped and not _has_held and _level_time > 8.0 and not _hints_shown.has("hold"):
+		_show_ghost_hand("hold", ".", "Swirl around the fire to stoke it", 0.35, 0.73)
 
-	# Phase 3: Drag — tapping/holding but not dragging after 22s
-	elif _has_tapped and not _has_dragged and _level_time > 22.0 and not _hints_shown.has("drag"):
-		_show_ghost_hand("drag", ".", "Drag from fire toward the dragon", 0.35, 0.68)
+	# Phase 3: Drag — not dragging outward after 15s
+	elif _has_tapped and not _has_dragged and _level_time > 15.0 and not _hints_shown.has("drag"):
+		_show_ghost_hand("drag", ".", drag_hint_text, 0.35, 0.68)
 
-	# Phase 4: Pinch/spread — struggling after 30s (temp hasn't reached 30)
-	elif _has_tapped and _max_heat_reached < 30.0 and _level_time > 30.0 and not _hints_shown.has("pinch"):
-		_show_ghost_hand("pinch", ".", "Spread two fingers to intensify fire", 0.35, 0.6)
+	# Phase 4: Spread — struggling after 25s (temp hasn't reached 35)
+	elif _has_dragged and _max_heat_reached < 35.0 and _level_time > 25.0 and not _hints_shown.has("pinch"):
+		_show_ghost_hand("pinch", ".", "Spread fingers or press + to boost heat", 0.35, 0.6)
 
 
 func notify_tap() -> void:

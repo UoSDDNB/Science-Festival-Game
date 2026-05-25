@@ -1,29 +1,28 @@
 extends Control
 
-## Clean, centered narrative interlude before the level.
+## Data-driven narrative interlude before each level.
+## Set `level_scene`, `title_text`, `body_text`, and `button_text` before adding to tree,
+## or use the defaults (Norse).
 
 signal scene_requested(scene_path: String)
 
-const LEVEL_SCENE := "res://scenes/levels/norse_onboarding.tscn"
-
-const NORSE_TITLE := "NIFLHEIM"
-const NORSE_TEXT := """In the frozen heart of Niflheim, something stirs beneath the ice.
+var level_scene: String = "res://scenes/levels/norse_level.tscn"
+var title_text: String = "NIFLHEIM"
+var body_text: String = """In the frozen heart of Niflheim, something stirs beneath the ice.
 
 The primordial fire of Muspelheim answers your call.
 Guide it carefully — too little and the ice reclaims its prize.
 Too much and you may destroy what you seek to save."""
+var button_text: String = "Awaken"
+var title_color: Color = Color(0.6, 0.8, 1, 0.8)
 
 
 func _ready() -> void:
-	var vp := get_viewport_rect().size
-
-	# Dark background
 	var bg := ColorRect.new()
 	bg.color = Color(0.015, 0.02, 0.045, 1)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	# Centered container
 	var center := VBoxContainer.new()
 	center.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_theme_constant_override("separation", 20)
@@ -34,15 +33,13 @@ func _ready() -> void:
 	center.offset_bottom = 180
 	add_child(center)
 
-	# Title
 	var title := Label.new()
-	title.text = NORSE_TITLE
+	title.text = title_text
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 36)
-	title.add_theme_color_override("font_color", Color(0.6, 0.8, 1, 0.8))
+	title.add_theme_color_override("font_color", title_color)
 	center.add_child(title)
 
-	# Divider line
 	var divider := ColorRect.new()
 	divider.custom_minimum_size = Vector2(200, 1)
 	divider.color = Color(0.4, 0.55, 0.7, 0.3)
@@ -50,9 +47,8 @@ func _ready() -> void:
 	div_container.add_child(divider)
 	center.add_child(div_container)
 
-	# Body text
 	var body := Label.new()
-	body.text = NORSE_TEXT
+	body.text = body_text
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.custom_minimum_size = Vector2(600, 0)
@@ -60,14 +56,12 @@ func _ready() -> void:
 	body.add_theme_color_override("font_color", Color(0.7, 0.75, 0.85, 0.85))
 	center.add_child(body)
 
-	# Spacer
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 15)
 	center.add_child(spacer)
 
-	# Begin button
 	var btn := Button.new()
-	btn.text = "Awaken"
+	btn.text = button_text
 	btn.custom_minimum_size = Vector2(180, 48)
 	btn.add_theme_font_size_override("font_size", 20)
 	btn.add_theme_color_override("font_color", Color(0.9, 0.8, 0.6, 0.95))
@@ -84,11 +78,10 @@ func _ready() -> void:
 	hover.set_corner_radius_all(4)
 	btn.add_theme_stylebox_override("hover", hover)
 	btn.add_theme_stylebox_override("pressed", hover)
-	btn.pressed.connect(func(): scene_requested.emit(LEVEL_SCENE))
+	btn.pressed.connect(func(): scene_requested.emit(level_scene))
 	var btn_container := CenterContainer.new()
 	btn_container.add_child(btn)
 	center.add_child(btn_container)
 
-	# Fade in
 	center.modulate.a = 0
 	create_tween().tween_property(center, "modulate:a", 1.0, 1.2)

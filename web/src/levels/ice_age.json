@@ -1,0 +1,40 @@
+{
+  "id": "ice_age",
+  "name": "Ice Age",
+  "order": 1,
+  "unlocked": true,
+  "background": "ice_age",
+  "palette": {
+    "bgTop": "#0c1830",
+    "bgBottom": "#2b6aa8",
+    "ground": "#e6efff",
+    "groundAccent": "#9cc4ee",
+    "fire": "#ff7733",
+    "fireHot": "#ffe7b0",
+    "obstacle": "#3a4a60",
+    "creature": "#a86a3a",
+    "creatureAccent": "#e8c08a",
+    "accent": "#ffd060"
+  },
+  "fire": { "x": 320, "y": 800, "tapRadius": 200 },
+  "creature": { "x": 1450, "y": 320, "kind": "scrat", "size": 1.6, "encased": true },
+  "sim": {
+    "diffusion": 0.06,
+    "dissipation": 0.005,
+    "sourceHeat": 15,
+    "targetRadius": 2,
+    "tapHeat": 30,
+    "dragHeat": 20,
+    "decayPerSec": 5
+  },
+  "win": {
+    "minHeat": 45,
+    "maxHeat": 70,
+    "dangerHeat": 85,
+    "sustainSeconds": 2.5,
+    "title": "THAWED!",
+    "body": "Your warmth reached Scrat through the frozen wasteland. The little guy can finally get to his acorn.",
+    "biologyLine": "You just activated a cell. In your body, signals like this wake up your immune system."
+  },
+  "hints": { "drag": "Drag from the fire toward the frozen squirrel" }
+}

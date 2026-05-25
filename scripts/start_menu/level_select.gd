@@ -1,22 +1,40 @@
 extends Control
 
-## Level selection — theme cards over the three-alcove background.
-## Robust positioning that works on both landscape and portrait viewports.
+## Level selection — theme cards for onboarding levels.
 
 signal scene_requested(scene_path: String)
 
-const NARRATIVE_SCENE := "res://scenes/narrative/narrative_interlude.tscn"
 const MENU_SCENE := "res://scenes/start_menu/start_menu.tscn"
 
 var themes := [
-	{"name": "Fire Meets Ice", "scene": NARRATIVE_SCENE, "unlocked": true, "color": Color(1, 0.5, 0.15)},
-	{"name": "Ice Age", "scene": "", "unlocked": false, "color": Color(0.4, 0.8, 1)},
-	{"name": "Enchanted", "scene": "", "unlocked": false, "color": Color(0.7, 0.4, 1)},
+	{
+		"name": "Ice Age",
+		"scene": "res://scenes/levels/ice_age_level.tscn",
+		"unlocked": true,
+		"color": Color(0.4, 0.8, 1),
+		"icon_text": "ICE",
+		"order": 1,
+	},
+	{
+		"name": "Fire Meets Ice",
+		"scene": "res://scenes/narrative/narrative_interlude.tscn",
+		"unlocked": true,
+		"color": Color(1, 0.5, 0.15),
+		"icon_text": "FIRE",
+		"order": 2,
+	},
+	{
+		"name": "Enchanted",
+		"scene": "",
+		"unlocked": false,
+		"color": Color(0.7, 0.4, 1),
+		"icon_text": "MAGIC",
+		"order": 3,
+	},
 ]
 
 
 func _ready() -> void:
-	# Back button
 	var back_btn := _make_button("< Back", Color(0.6, 0.8, 1, 0.8))
 	back_btn.position = Vector2(20, 15)
 	back_btn.custom_minimum_size = Vector2(100, 36)
@@ -24,7 +42,6 @@ func _ready() -> void:
 	back_btn.pressed.connect(func(): scene_requested.emit(MENU_SCENE))
 	add_child(back_btn)
 
-	# Title
 	var title := Label.new()
 	title.text = "SELECT LEVEL"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -35,7 +52,6 @@ func _ready() -> void:
 	title.offset_bottom = 55
 	add_child(title)
 
-	# Cards container — centered, responsive
 	var hbox := HBoxContainer.new()
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.add_theme_constant_override("separation", 30)
@@ -56,7 +72,6 @@ func _build_card(theme: Dictionary) -> PanelContainer:
 	card.custom_minimum_size = Vector2(240, 260)
 	var theme_color: Color = theme["color"]
 
-	# Card background
 	var style := StyleBoxFlat.new()
 	if theme["unlocked"]:
 		style.bg_color = Color(theme_color.r * 0.12, theme_color.g * 0.12, theme_color.b * 0.1, 0.55)
@@ -72,24 +87,29 @@ func _build_card(theme: Dictionary) -> PanelContainer:
 	vbox.add_theme_constant_override("separation", 8)
 	card.add_child(vbox)
 
-	# Spacer / icon area
 	var icon_area := CenterContainer.new()
-	icon_area.custom_minimum_size = Vector2(0, 120)
+	icon_area.custom_minimum_size = Vector2(0, 100)
 	vbox.add_child(icon_area)
 
+	var icon_vbox := VBoxContainer.new()
+	icon_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	icon_area.add_child(icon_vbox)
+
 	var icon := Label.new()
-	if theme["name"] == "Fire Meets Ice":
-		icon.text = "FIRE"
-	elif theme["name"] == "Ice Age":
-		icon.text = "ICE"
-	else:
-		icon.text = "MAGIC"
+	icon.text = theme.get("icon_text", "")
 	icon.add_theme_font_size_override("font_size", 28)
 	icon.add_theme_color_override("font_color", theme_color if theme["unlocked"] else Color(0.4, 0.4, 0.45, 0.4))
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon_area.add_child(icon)
+	icon_vbox.add_child(icon)
 
-	# Name
+	# Level number
+	var order_lbl := Label.new()
+	order_lbl.text = "Level %d" % theme.get("order", 0)
+	order_lbl.add_theme_font_size_override("font_size", 12)
+	order_lbl.add_theme_color_override("font_color", Color(0.5, 0.55, 0.6, 0.5))
+	order_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	icon_vbox.add_child(order_lbl)
+
 	var name_lbl := Label.new()
 	name_lbl.text = theme["name"] as String
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -97,7 +117,6 @@ func _build_card(theme: Dictionary) -> PanelContainer:
 	name_lbl.add_theme_color_override("font_color", theme_color if theme["unlocked"] else Color(0.45, 0.45, 0.5, 0.5))
 	vbox.add_child(name_lbl)
 
-	# Play button or locked label
 	if theme["unlocked"]:
 		var play_btn := _make_button("PLAY", Color(1, 0.95, 0.85))
 		play_btn.custom_minimum_size = Vector2(0, 42)
