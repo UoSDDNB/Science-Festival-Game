@@ -15,80 +15,81 @@ Too much and you may destroy what you seek to save."""
 
 
 func _ready() -> void:
-	var vp := get_viewport_rect().size
+	# Read the viewport size for layout calculations.
+	var viewport_size := get_viewport_rect().size
 
-	# Dark background
-	var bg := ColorRect.new()
-	bg.color = Color(0.015, 0.02, 0.045, 1)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	# Fill the screen with a dark narrative background.
+	var background_rect := ColorRect.new()
+	background_rect.color = Color(0.015, 0.02, 0.045, 1)
+	background_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(background_rect)
 
-	# Centered container
-	var center := VBoxContainer.new()
-	center.alignment = BoxContainer.ALIGNMENT_CENTER
-	center.add_theme_constant_override("separation", 20)
-	center.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	center.offset_left = -350
-	center.offset_right = 350
-	center.offset_top = -180
-	center.offset_bottom = 180
-	add_child(center)
+	# Center the title, body text, and Awaken button vertically.
+	var center_container := VBoxContainer.new()
+	center_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	center_container.add_theme_constant_override("separation", 20)
+	center_container.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	center_container.offset_left = -350
+	center_container.offset_right = 350
+	center_container.offset_top = -180
+	center_container.offset_bottom = 180
+	add_child(center_container)
 
-	# Title
-	var title := Label.new()
-	title.text = NORSE_TITLE
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 36)
-	title.add_theme_color_override("font_color", Color(0.6, 0.8, 1, 0.8))
-	center.add_child(title)
+	# Display the Norse location title.
+	var title_label := Label.new()
+	title_label.text = NORSE_TITLE
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override("font_size", 36)
+	title_label.add_theme_color_override("font_color", Color(0.6, 0.8, 1, 0.8))
+	center_container.add_child(title_label)
 
-	# Divider line
-	var divider := ColorRect.new()
-	divider.custom_minimum_size = Vector2(200, 1)
-	divider.color = Color(0.4, 0.55, 0.7, 0.3)
-	var div_container := CenterContainer.new()
-	div_container.add_child(divider)
-	center.add_child(div_container)
+	# Add a subtle divider line beneath the title.
+	var divider_rect := ColorRect.new()
+	divider_rect.custom_minimum_size = Vector2(200, 1)
+	divider_rect.color = Color(0.4, 0.55, 0.7, 0.3)
+	var divider_container := CenterContainer.new()
+	divider_container.add_child(divider_rect)
+	center_container.add_child(divider_container)
 
-	# Body text
-	var body := Label.new()
-	body.text = NORSE_TEXT
-	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.custom_minimum_size = Vector2(600, 0)
-	body.add_theme_font_size_override("font_size", 18)
-	body.add_theme_color_override("font_color", Color(0.7, 0.75, 0.85, 0.85))
-	center.add_child(body)
+	# Display the narrative body text with word wrapping.
+	var body_label := Label.new()
+	body_label.text = NORSE_TEXT
+	body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.custom_minimum_size = Vector2(600, 0)
+	body_label.add_theme_font_size_override("font_size", 18)
+	body_label.add_theme_color_override("font_color", Color(0.7, 0.75, 0.85, 0.85))
+	center_container.add_child(body_label)
 
-	# Spacer
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 15)
-	center.add_child(spacer)
+	# Add vertical spacing before the begin button.
+	var vertical_spacer := Control.new()
+	vertical_spacer.custom_minimum_size = Vector2(0, 15)
+	center_container.add_child(vertical_spacer)
 
-	# Begin button
-	var btn := Button.new()
-	btn.text = "Awaken"
-	btn.custom_minimum_size = Vector2(180, 48)
-	btn.add_theme_font_size_override("font_size", 20)
-	btn.add_theme_color_override("font_color", Color(0.9, 0.8, 0.6, 0.95))
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.1, 0.06, 0.5)
-	style.border_color = Color(0.5, 0.4, 0.25, 0.6)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(4)
-	btn.add_theme_stylebox_override("normal", style)
-	var hover := StyleBoxFlat.new()
-	hover.bg_color = Color(0.2, 0.16, 0.08, 0.7)
-	hover.border_color = Color(0.7, 0.55, 0.3, 0.8)
-	hover.set_border_width_all(2)
-	hover.set_corner_radius_all(4)
-	btn.add_theme_stylebox_override("hover", hover)
-	btn.add_theme_stylebox_override("pressed", hover)
-	btn.pressed.connect(func(): scene_requested.emit(LEVEL_SCENE))
-	var btn_container := CenterContainer.new()
-	btn_container.add_child(btn)
-	center.add_child(btn_container)
+	# Create the Awaken button that starts the level.
+	var begin_button := Button.new()
+	begin_button.text = "Awaken"
+	begin_button.custom_minimum_size = Vector2(180, 48)
+	begin_button.add_theme_font_size_override("font_size", 20)
+	begin_button.add_theme_color_override("font_color", Color(0.9, 0.8, 0.6, 0.95))
+	var normal_style_box := StyleBoxFlat.new()
+	normal_style_box.bg_color = Color(0.12, 0.1, 0.06, 0.5)
+	normal_style_box.border_color = Color(0.5, 0.4, 0.25, 0.6)
+	normal_style_box.set_border_width_all(1)
+	normal_style_box.set_corner_radius_all(4)
+	begin_button.add_theme_stylebox_override("normal", normal_style_box)
+	var hover_style_box := StyleBoxFlat.new()
+	hover_style_box.bg_color = Color(0.2, 0.16, 0.08, 0.7)
+	hover_style_box.border_color = Color(0.7, 0.55, 0.3, 0.8)
+	hover_style_box.set_border_width_all(2)
+	hover_style_box.set_corner_radius_all(4)
+	begin_button.add_theme_stylebox_override("hover", hover_style_box)
+	begin_button.add_theme_stylebox_override("pressed", hover_style_box)
+	begin_button.pressed.connect(func(): scene_requested.emit(LEVEL_SCENE))
+	var button_container := CenterContainer.new()
+	button_container.add_child(begin_button)
+	center_container.add_child(button_container)
 
-	# Fade in
-	center.modulate.a = 0
-	create_tween().tween_property(center, "modulate:a", 1.0, 1.2)
+	# Fade the narrative content in from transparent to fully visible.
+	center_container.modulate.a = 0
+	create_tween().tween_property(center_container, "modulate:a", 1.0, 1.2)
