@@ -13,16 +13,27 @@ var polygon: Polygon2D = null
 var area: Area2D = null
 
 
-func _init(p_id: int, p_conductivity_mod: float = 1.0, p_is_source: bool = false, p_is_target: bool = false) -> void:
-	id = p_id
-	conductivity_modifier = p_conductivity_mod
-	is_source = p_is_source
-	is_target = p_is_target
+func _init(
+	zone_identifier: int,
+	conductivity_modifier_value: float = 1.0,
+	is_source_zone: bool = false,
+	is_target_zone: bool = false
+) -> void:
+	# Store the unique identifier for this heat zone.
+	id = zone_identifier
+	# Store how quickly heat moves through this zone relative to others.
+	conductivity_modifier = conductivity_modifier_value
+	# Mark whether this zone is the fire source that replenishes heat.
+	is_source = is_source_zone
+	# Mark whether this zone is the creature or dragon target zone.
+	is_target = is_target_zone
 
 
-func add_heat(amount: float) -> void:
-	heat = clampf(heat + amount, 0.0, 100.0)
+func add_heat(heat_amount: float) -> void:
+	# Increase zone heat and clamp the result between zero and one hundred.
+	heat = clampf(heat + heat_amount, 0.0, 100.0)
 
 
 func get_normalized_heat() -> float:
+	# Return heat as a zero-to-one fraction for display and gradient sampling.
 	return heat / 100.0
