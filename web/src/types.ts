@@ -62,7 +62,9 @@ export interface LevelDef {
   fail?: FailConfig;
   /** If true, screen shake amplitude scales with target heat. */
   shakeWithHeat?: boolean;
-  hints: { drag: string };
+  /** Per-level instruction text. `drag` required; the rest are optional overrides
+   *  of the HintSystem defaults. An empty string suppresses that hint entirely. */
+  hints: { drag: string; tap?: string; hold?: string; pinch?: string };
 }
 
 export const WORLD_WIDTH = 1920;

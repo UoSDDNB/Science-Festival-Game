@@ -176,6 +176,11 @@ export class LevelScene extends Phaser.Scene {
 
     this.hints = new HintSystem(this);
     this.hints.setDragHint(this.def.hints.drag);
+    // `!= null` (not truthiness): an explicit "" in the level JSON means "suppress this
+    // hint", which only works if the setter still runs with the empty string.
+    if (this.def.hints.tap != null) this.hints.setTapHint(this.def.hints.tap);
+    if (this.def.hints.hold != null) this.hints.setHoldHint(this.def.hints.hold);
+    if (this.def.hints.pinch != null) this.hints.setPinchHint(this.def.hints.pinch);
 
     this.debug = new DebugOverlay(this, this.field, this.def);
 

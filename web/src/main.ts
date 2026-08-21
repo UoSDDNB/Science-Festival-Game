@@ -32,7 +32,12 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [BootScene, LevelSelectScene, LevelScene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// Test/debug hook: expose the game instance for headless verification scripts
+// (sci-game-live/play/verify*.mjs read scene state via page.evaluate).
+// No effect on gameplay. Safe to remove if the hook is unwanted in the shipped bundle.
+(window as unknown as { __PHASER_GAME?: Phaser.Game }).__PHASER_GAME = game;
 
 // Re-export so unused imports don't break tree-shaking
 export { WORLD_WIDTH, WORLD_HEIGHT };

@@ -45,5 +45,9 @@
     "body": "Too much. Mast cells flooded the tissue with histamine, blood vessels dilated, airways swelled, blood pressure crashed.",
     "biologyLine": "Severe allergic reaction — life-threatening within minutes. This is why people with serious allergies carry adrenaline auto-injectors."
   },
-  "hints": { "drag": "Drag the pollen up — all the way up the nose" }
+  "hints": {
+    "drag": "Drag the pollen up — all the way up the nose",
+    "tap": "Tap the pollen",
+    "hold": "Swirl around the pollen to release more"
+  }
 }

@@ -8,6 +8,9 @@ export class HintSystem {
   private readonly scene: Phaser.Scene;
   private readonly label: Phaser.GameObjects.Text;
   private dragHintText = "Drag from the fire toward the creature";
+  private tapHintText = "Tap the fire";
+  private holdHintText = "Swirl around the fire to stoke it";
+  private pinchHintText = "Spread two fingers (or press +) to boost heat";
 
   private elapsed = 0;
   private maxHeatSeen = 0;
@@ -34,6 +37,9 @@ export class HintSystem {
   setDragHint(text: string): void {
     this.dragHintText = text;
   }
+  setTapHint(text: string): void { this.tapHintText = text; }
+  setHoldHint(text: string): void { this.holdHintText = text; }
+  setPinchHint(text: string): void { this.pinchHintText = text; }
 
   notifyTap(): void { this.hasTapped = true; if (this.current === "tap") this.hide(); }
   notifyDrag(): void { this.hasDragged = true; if (this.current === "drag") this.hide(); }
@@ -64,16 +70,16 @@ export class HintSystem {
 
     if (!this.hasTapped && this.elapsed > 4 && !this.shown.has("tap")) {
       this.label.setColor("#ffd5a0");
-      this.show("tap", "Tap the fire", 4500);
+      if (this.tapHintText) this.show("tap", this.tapHintText, 4500);
     } else if (this.hasTapped && !this.hasHeld && this.elapsed > 8 && !this.shown.has("hold")) {
       this.label.setColor("#ffd5a0");
-      this.show("hold", "Swirl around the fire to stoke it", 4500);
+      if (this.holdHintText) this.show("hold", this.holdHintText, 4500);
     } else if (this.hasTapped && !this.hasDragged && this.elapsed > 15 && !this.shown.has("drag")) {
       this.label.setColor("#ffd5a0");
       this.show("drag", this.dragHintText, 5000);
     } else if (this.hasDragged && this.maxHeatSeen < 35 && this.elapsed > 25 && !this.shown.has("pinch")) {
       this.label.setColor("#ffd5a0");
-      this.show("pinch", "Spread two fingers (or press +) to boost heat", 5000);
+      if (this.pinchHintText) this.show("pinch", this.pinchHintText, 5000);
     }
   }
 
