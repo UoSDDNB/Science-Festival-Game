@@ -19,6 +19,7 @@ export class Thermometer {
   private displayHeat = 0;
   private targetHeat = 0;
   private pulseT = 0;
+  private label: Phaser.GameObjects.Text | null = null;
 
   minBand = 50;
   maxBand = 70;
@@ -34,6 +35,25 @@ export class Thermometer {
     this.minBand = min;
     this.maxBand = max;
     this.dangerThreshold = danger;
+  }
+
+  /** Optional player-facing label under the meter (e.g. "Activation" for the
+   *  allergy level). Fire levels pass nothing and stay unlabeled. */
+  setLabel(text: string | null): void {
+    if (this.label) this.label.destroy();
+    this.label = null;
+    if (!text) return;
+    const { x, width } = this.bounds;
+    this.label = this.scene.add
+      .text(x + width / 2, this.bounds.y + this.bounds.height + width * 0.9 + 18, text, {
+        fontFamily: "ui-sans-serif, system-ui",
+        fontSize: "13px",
+        color: "#9fb5d8",
+        fontStyle: "italic",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1002);
   }
 
   setBounds(x: number, y: number, w: number, h: number): void {
@@ -52,6 +72,8 @@ export class Thermometer {
   }
 
   destroy(): void {
+    this.label?.destroy();
+    this.label = null;
     this.g.destroy();
     this.outlineG.destroy();
   }

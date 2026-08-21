@@ -142,8 +142,11 @@ export class SneezeCutscene {
   }
 
   destroy(): void {
+    if (this.destroyed) return;
     this.destroyed = true;
     this.veil.destroy();
-    this.container.destroy();
+    // destroy(true): also destroys children (face, AAA-CHOO! text, droplets) —
+    // they must not leak behind the result panel.
+    this.container.destroy(true);
   }
 }

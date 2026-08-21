@@ -62,6 +62,10 @@ export interface LevelDef {
   fail?: FailConfig;
   /** If true, screen shake amplitude scales with target heat. */
   shakeWithHeat?: boolean;
+  /** Optional label drawn under the meter (thermometer). Levels whose
+   *  abstraction is not temperature (e.g. mast_cell: "Activation") set this;
+   *  fire levels stay unlabeled. */
+  meterLabel?: string;
   /** Per-level instruction text. `drag` required; the rest are optional overrides
    *  of the HintSystem defaults. An empty string suppresses that hint entirely. */
   hints: { drag: string; tap?: string; hold?: string; pinch?: string };

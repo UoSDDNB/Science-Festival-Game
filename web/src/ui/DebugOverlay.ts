@@ -41,7 +41,7 @@ export class DebugOverlay {
     }
 
     this.fireLabel = scene.add
-      .text(def.fire.x + 12, def.fire.y - 24, "FIRE", { fontFamily: "ui-monospace, monospace", fontSize: "14px", color: "#ff9a30" })
+      .text(def.fire.x + 12, def.fire.y - 24, "SOURCE", { fontFamily: "ui-monospace, monospace", fontSize: "14px", color: "#ff9a30" })
       .setDepth(901)
       .setVisible(false);
     this.creatureLabel = scene.add

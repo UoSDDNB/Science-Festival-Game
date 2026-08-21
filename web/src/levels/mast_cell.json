@@ -48,6 +48,8 @@
   "hints": {
     "drag": "Drag the pollen up — all the way up the nose",
     "tap": "Tap the pollen",
-    "hold": "Swirl around the pollen to release more"
-  }
+    "hold": "Swirl around the pollen to release more",
+    "pinch": "Spread two fingers (or press +) to release more"
+  },
+  "meterLabel": "Activation"
 }

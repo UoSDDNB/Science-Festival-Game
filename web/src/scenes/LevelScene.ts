@@ -173,7 +173,6 @@ export class LevelScene extends Phaser.Scene {
     this.thermometer = new Thermometer(this);
     this.thermometer.setBand(this.def.win.minHeat, this.def.win.maxHeat, this.def.win.dangerHeat);
     this.layoutThermometer();
-
     this.hints = new HintSystem(this);
     this.hints.setDragHint(this.def.hints.drag);
     // `!= null` (not truthiness): an explicit "" in the level JSON means "suppress this
@@ -243,6 +242,9 @@ export class LevelScene extends Phaser.Scene {
     const x = w - tw - Math.max(30, w * 0.025);
     const y = (h - th) / 2;
     this.thermometer.setBounds(x, y, tw, th);
+    // Optional per-level meter label (e.g. "Activation" for the allergy level);
+    // re-set on resize so it tracks the meter bounds.
+    this.thermometer.setLabel(this.def.meterLabel ?? null);
   }
 
   private handleResize(): void {
@@ -535,8 +537,12 @@ export class LevelScene extends Phaser.Scene {
     });
 
     if (this.def.id === "mast_cell") {
-      // Cutscene first, then WinOverlay
-      new SneezeCutscene(this, () => {
+      // Cutscene first, THEN the result panel. The cutscene is destroyed in
+      // onDone (before the WinOverlay exists) so the 900 ms animation plays in
+      // full and the panel then appears unobstructed; the PANEL_* depths in
+      // resultLayout.ts are the extra guarantee that the panel always wins.
+      const cutscene = new SneezeCutscene(this, () => {
+        cutscene.destroy();
         new WinOverlay(
           this,
           this.def,
