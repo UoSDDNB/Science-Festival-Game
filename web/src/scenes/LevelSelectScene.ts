@@ -1,136 +1,358 @@
 import Phaser from "phaser";
 import { LEVELS } from "../levels";
-import { LevelDef, WORLD_WIDTH, WORLD_HEIGHT } from "../types";
+import { LevelDef } from "../types";
 import { hexToInt } from "../visuals/palette";
+import { drawCardMotif, lerpHex } from "../visuals/cardPreview";
+import { ScrollPanel } from "../ui/ScrollPanel";
 
 /**
- * Card-based level select. Cards are procedurally drawn; play button launches
- * the level scene with the chosen LevelDef.
+ * Card-based level select — responsive port of the production live build
+ * (sci-game-live/assets-index.js) + semantic card previews (drawCardMotif).
+ *
+ * Three layout modes:
+ *   desktop-row    — wide viewports: cards side by side.
+ *   desktop-stack  — narrow-but-not-phone: cards stacked vertically.
+ *   phone-scroll   — tall portrait: vertical scrolling card list inside a
+ *                    ScrollPanel (drag + wheel, off-screen cards culled).
+ *
+ * Rebuilds on resize / orientationchange (80 ms debounce).
  */
+
+const DESKTOP_ROW_MIN_W = 700;
+const SHORT_MIN = 520; // live: min(w,h) < 520 → phone-scroll (tall portrait OR short landscape)
+const PHONE_CARD_H = 132;
+const PHONE_GAP = 12;
+const ROW_GAP = 36;
+const ROW_CARD_MIN = 220;
+const STACK_CARD_H = 360;
+const STACK_GAP = 24;
+
+interface CardMetrics {
+  swatchSize: number;
+  swatchY: number;
+  nameY: number;
+  playY: number;
+  showBlurb: boolean;
+  buttonWidth: number;
+  buttonHeight: number;
+  nameSize: number;
+  blurbSize: number;
+  orderSize: number;
+}
+
+interface CardLayout {
+  mode: "desktop-row" | "desktop-stack" | "phone-scroll";
+  cardWidth: number;
+  cardHeight: number;
+  gap: number;
+  compact: boolean;
+  headerHeight: number;
+  titleY: number;
+  subtitleY: number;
+  titleSize: number;
+  subtitleSize: number;
+  showSubtitle: boolean;
+  scrollAreaTop: number;
+  scrollAreaHeight: number;
+  contentHeight: number;
+  positions: Array<{ x: number; y: number }>;
+}
+
+/** Responsive px helper (the live build's B()): value at 1920 width, scaled by
+ *  the viewport, then floored for readability (the raw live port undersized
+ *  phone text — the approved fix keeps a hard floor per element). */
+function responsive(v: number, w: number, compact: boolean, floor: number): number {
+  const k = Phaser.Math.Clamp(w / 1920, compact ? 0.34 : 0.42, 1);
+  return Math.max(floor, Math.round(v * k));
+}
+
+function computeLayout(w: number, h: number, count: number): CardLayout {
+  const short = Math.min(w, h) < SHORT_MIN;
+  const narrow = w < DESKTOP_ROW_MIN_W;
+  const compact = short || narrow;
+  const titleSize = responsive(compact ? 48 : 72, w, compact, compact ? 16 : 30);
+  const subtitleSize = responsive(16, w, compact, 10);
+  const showSubtitle = !short || h > 420;
+  const headerTop = short ? titleSize * 0.75 : w * 0.12;
+  const titleY = headerTop + titleSize * 0.55;
+  const subtitleY = showSubtitle ? titleY + subtitleSize + (short ? 10 : 24) : headerTop + titleSize * 0.5 + (short ? 12 : 24);
+
+  // phone-scroll — full-width landscape cards in a ScrollPanel (live geometry:
+  // cardWidth = clamp(w-24, 260, w-16), cardHeight = 132)
+  if (short) {
+    const cw = Phaser.Math.Clamp(w - 24, 260, w - 16);
+    const ch = PHONE_CARD_H;
+    const gap = PHONE_GAP;
+    const headerH = showSubtitle ? titleY + subtitleSize + 10 : titleY + titleSize * 0.5 + 12;
+    const areaH = Math.max(120, h - headerH - 8);
+    const contentHeight = count * ch + (count - 1) * gap;
+    const positions = Array.from({ length: count }, (_, i) => ({ x: cw / 2, y: i * (ch + gap) + ch / 2 }));
+    return {
+      mode: "phone-scroll", cardWidth: cw, cardHeight: ch, gap, compact: true,
+      headerHeight: headerH, titleY, subtitleY,
+      titleSize, subtitleSize, showSubtitle,
+      scrollAreaTop: headerH, scrollAreaHeight: areaH, contentHeight, positions,
+    };
+  }
+
+  // desktop-row — wide enough for all cards side by side
+  const rowTotal = count * ROW_CARD_MIN + (count - 1) * ROW_GAP;
+  if (w >= rowTotal && w >= DESKTOP_ROW_MIN_W) {
+    const cw = Phaser.Math.Clamp((w - ROW_GAP * (count - 1) - 48) / count, 220, 320);
+    const ch = Phaser.Math.Clamp(h * 0.44, 300, 360);
+    const total = count * cw + (count - 1) * ROW_GAP;
+    const startX = (w - total) / 2;
+    const y = h * 0.55;
+    const positions = Array.from({ length: count }, (_, i) => ({ x: startX + i * (cw + ROW_GAP) + cw / 2, y }));
+    return {
+      mode: "desktop-row", cardWidth: cw, cardHeight: ch, gap: ROW_GAP, compact: false,
+      headerHeight: 0, titleY, subtitleY,
+      titleSize, subtitleSize, showSubtitle: true,
+      scrollAreaTop: 0, scrollAreaHeight: h, contentHeight: h, positions,
+    };
+  }
+
+  // desktop-stack — narrow but not phone. NOTE: the stacked cards can overflow
+  // the viewport bottom (pre-existing live issue — logged in HANDOFF, not fixed
+  // in this pass per user steer).
+  const sw = Phaser.Math.Clamp(w * 0.88, 260, 340);
+  const sh = STACK_CARD_H;
+  const headerH = showSubtitle ? titleY + subtitleSize + 16 : titleY + 16;
+  const positions = Array.from({ length: count }, (_, i) => ({ x: w / 2, y: headerH + i * (sh + STACK_GAP) + sh / 2 }));
+  return {
+    mode: "desktop-stack", cardWidth: sw, cardHeight: sh, gap: STACK_GAP, compact,
+    headerHeight: headerH, titleY, subtitleY,
+    titleSize, subtitleSize, showSubtitle: true,
+    scrollAreaTop: 0, scrollAreaHeight: h, contentHeight: h, positions,
+  };
+}
+
+function cardMetrics(w: number, h: number, viewW: number, compact: boolean): CardMetrics {
+  const pad = compact ? 10 : 16;
+  const swatchSize = compact ? Phaser.Math.Clamp(Math.round(h * 0.26), 22, 30) : Phaser.Math.Clamp(Math.round(w * 0.13), 32, 44);
+  const playH = compact ? 30 : 40;
+  const buttonWidth = compact ? Phaser.Math.Clamp(Math.round(w * 0.32), 84, 112) : Phaser.Math.Clamp(Math.round(w * 0.44), 120, 160);
+  const nameSize = responsive(compact ? 20 : 28, viewW, compact, 16);
+  const blurbSize = responsive(compact ? 13 : 18, viewW, compact, 10);
+  const orderSize = responsive(compact ? 13 : 18, viewW, compact, 10);
+  const top = -h / 2;
+  const swatchY = top + pad;
+  const nameY = top + pad + swatchSize + 8;
+  const playY = top + h - pad - playH / 2;
+  return {
+    swatchSize, swatchY, nameY, playY,
+    showBlurb: !compact && h >= 240,
+    buttonWidth, buttonHeight: playH,
+    nameSize, blurbSize, orderSize,
+  };
+}
+
 export class LevelSelectScene extends Phaser.Scene {
+  private uiRoot: Phaser.GameObjects.Container | null = null;
+  private scrollPanel: ScrollPanel | null = null;
+  private resizeTimer: Phaser.Time.TimerEvent | null = null;
+  private layout: CardLayout | null = null;
+
   constructor() {
     super("level-select");
   }
 
+  private onOrientationChange = (): void => {
+    window.setTimeout(() => {
+      this.scale.refresh();
+      this.scheduleRebuild();
+    }, 150);
+  };
+
   create(): void {
-    const w = this.scale.width;
-    const h = this.scale.height;
-
-    // Backdrop
-    const bg = this.add.graphics();
-    for (let i = 0; i < 60; i++) {
-      const t = i / 59;
-      const top = 0x080d1c;
-      const bot = 0x18253c;
-      const ar = (top >> 16) & 0xff, ag = (top >> 8) & 0xff, ab = top & 0xff;
-      const br = (bot >> 16) & 0xff, bg2 = (bot >> 8) & 0xff, bb = bot & 0xff;
-      const col = (Math.round(ar + (br - ar) * t) << 16) | (Math.round(ag + (bg2 - ag) * t) << 8) | Math.round(ab + (bb - ab) * t);
-      bg.fillStyle(col, 1);
-      bg.fillRect(0, (i * h) / 60, w, h / 60 + 1);
-    }
-
-    this.add
-      .text(w / 2, h * 0.12, "PLAYTIME", { fontFamily: "ui-sans-serif, system-ui", fontSize: "72px", color: "#ffd86a", fontStyle: "bold" })
-      .setOrigin(0.5);
-    this.add
-      .text(w / 2, h * 0.2, "an invitation to feel how cells talk", { fontFamily: "ui-sans-serif, system-ui", fontSize: "22px", color: "#9fb5d8", fontStyle: "italic" })
-      .setOrigin(0.5);
-
-    const cardW = 320;
-    const cardH = 380;
-    const gap = 40;
-    const totalW = LEVELS.length * cardW + (LEVELS.length - 1) * gap;
-    const startX = (w - totalW) / 2;
-    const y = h * 0.55;
-
-    LEVELS.forEach((lvl, i) => {
-      this.makeCard(startX + i * (cardW + gap) + cardW / 2, y, cardW, cardH, lvl);
-    });
-
-    // Quick-start most-recent / first level on Enter
+    this.scale.on("resize", this.scheduleRebuild, this);
+    window.addEventListener("orientationchange", this.onOrientationChange);
+    this.rebuildLayout();
+    // Quick-start first level on Enter
     this.input.keyboard?.on("keydown-ENTER", () => {
       this.launch(LEVELS[0]!);
     });
   }
 
-  private makeCard(cx: number, cy: number, w: number, h: number, lvl: LevelDef): void {
-    const tint = hexToInt(lvl.palette.fire);
+  shutdown(): void {
+    this.scale.off("resize", this.scheduleRebuild, this);
+    window.removeEventListener("orientationchange", this.onOrientationChange);
+    this.resizeTimer?.remove(false);
+    this.scrollPanel?.destroy();
+    this.scrollPanel = null;
+  }
 
+  private scheduleRebuild(): void {
+    this.resizeTimer?.remove(false);
+    this.resizeTimer = this.time.delayedCall(80, () => this.rebuildLayout());
+  }
+
+  private rebuildLayout(): void {
+    this.scrollPanel?.destroy();
+    this.scrollPanel = null;
+    if (this.uiRoot) this.uiRoot.destroy(true);
+    const w = this.scale.width;
+    const h = this.scale.height;
+    this.layout = computeLayout(w, h, LEVELS.length);
+
+    this.uiRoot = this.add.container(0, 0);
+
+    // Backdrop: deep blue vertical gradient
+    const bg = this.add.graphics();
+    const top = 0x080d1c;
+    const bot = 0x18253c;
+    for (let i = 0; i < 60; i++) {
+      const t = i / 59;
+      const col = lerpHex(top, bot, t);
+      bg.fillStyle(col, 1);
+      bg.fillRect(0, (i * h) / 60, w, h / 60 + 1);
+    }
+    this.uiRoot.add(bg);
+
+    // Title
+    this.uiRoot.add(
+      this.add
+        .text(w / 2, this.layout.titleY, "PLAYTIME", { fontFamily: "ui-sans-serif, system-ui", fontSize: `${this.layout.titleSize}px`, color: "#ffd86a", fontStyle: "bold" })
+        .setOrigin(0.5),
+    );
+    if (this.layout.showSubtitle) {
+      this.uiRoot.add(
+        this.add
+          .text(w / 2, this.layout.subtitleY, "an invitation to feel how cells talk", { fontFamily: "ui-sans-serif, system-ui", fontSize: `${this.layout.subtitleSize}px`, color: "#9fb5d8", fontStyle: "italic", align: "center", wordWrap: { width: w * 0.9 } })
+          .setOrigin(0.5),
+      );
+    }
+
+    // Phone mode: cards go into a ScrollPanel
+    const host = this.layout.mode === "phone-scroll" ? this.createScrollParent(this.layout) : this.uiRoot;
+    const wholeCardClickable = this.layout.mode !== "phone-scroll";
+
+    LEVELS.forEach((lvl, i) => {
+      const pos = this.layout!.positions[i]!;
+      const card = this.makeCard(pos.x, pos.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, lvl, wholeCardClickable);
+      if (this.layout!.mode === "phone-scroll" && this.scrollPanel) {
+        this.scrollPanel.add(card, this.layout!.cardHeight);
+      } else {
+        host.add(card);
+      }
+    });
+  }
+
+  /** Subtle translucent deep-blue scroll backdrop (approved deviation from
+   *  the live build's 0x00A120 debug-green rectangle). */
+  private createScrollParent(L: CardLayout): Phaser.GameObjects.Container {
+    const backdrop = this.add.graphics();
+    backdrop.fillStyle(0x0a1424, 0.6);
+    backdrop.fillRoundedRect(12, L.scrollAreaTop, this.scale.width - 24, L.scrollAreaHeight, 12);
+    this.uiRoot!.add(backdrop);
+    this.scrollPanel = new ScrollPanel(this);
+    this.scrollPanel.setViewport(12, L.scrollAreaTop, this.scale.width - 24, L.scrollAreaHeight);
+    this.scrollPanel.setContentHeight(L.contentHeight);
+    this.uiRoot!.add(this.scrollPanel.container);
+    return this.scrollPanel.list;
+  }
+
+  private makeCard(
+    cx: number, cy: number, w: number, h: number,
+    compact: boolean, lvl: LevelDef, wholeCardClickable: boolean,
+  ): Phaser.GameObjects.Container {
+    const tint = hexToInt(lvl.palette.fire);
     const card = this.add.container(cx, cy);
+    const r = compact ? 12 : 16;
 
     const g = this.add.graphics();
     g.fillStyle(0x111a2a, 0.85);
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, 16);
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
     g.lineStyle(2, tint, 0.65);
-    g.strokeRoundedRect(-w / 2, -h / 2, w, h, 16);
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
     card.add(g);
 
-    // Decorative palette swatch
-    const swatch = this.add.graphics();
-    const sx = -w / 2 + 24;
-    const sy = -h / 2 + 24;
-    swatch.fillStyle(hexToInt(lvl.palette.bgTop), 1); swatch.fillRoundedRect(sx, sy, 48, 48, 6);
-    swatch.fillStyle(hexToInt(lvl.palette.bgBottom), 1); swatch.fillRoundedRect(sx + 56, sy, 48, 48, 6);
-    swatch.fillStyle(tint, 1); swatch.fillRoundedRect(sx + 112, sy, 48, 48, 6);
-    swatch.fillStyle(hexToInt(lvl.palette.creature), 1); swatch.fillRoundedRect(sx + 168, sy, 48, 48, 6);
-    card.add(swatch);
+    const m = cardMetrics(w, h, this.scale.width, compact);
 
-    const order = this.add.text(w / 2 - 24, -h / 2 + 24, `0${lvl.order}`, {
-      fontFamily: "ui-monospace, monospace",
-      fontSize: "20px",
-      color: "#5a7090",
-    }).setOrigin(1, 0);
+    // Semantic preview: full band on desktop cards, 36 px icon (replacing the
+    // old palette-swatch row) on compact phone cards. Palette-driven.
+    if (compact) {
+      const icon = this.add.graphics();
+      drawCardMotif(icon, lvl, -w / 2 + 14, -h / 2 + 10, 36, 36, 8, 8);
+      card.add(icon);
+    } else {
+      const band = this.add.graphics();
+      drawCardMotif(band, lvl, -w / 2, -h / 2, w, 56, r, 0);
+      card.add(band);
+    }
+
+    // Order number on a small dark chip (readable over any preview colour)
+    const chip = this.add.graphics();
+    chip.fillStyle(0x0a0f1a, 0.72);
+    chip.fillRoundedRect(w / 2 - 14 - 40, -h / 2 + 8, 40, 22, 6);
+    card.add(chip);
+    const order = this.add
+      .text(w / 2 - 14 - 20, -h / 2 + 19, `0${lvl.order}`, { fontFamily: "ui-monospace, monospace", fontSize: `${m.orderSize}px`, color: "#c9d6ea" })
+      .setOrigin(0.5);
     card.add(order);
 
-    const name = this.add.text(0, -h / 2 + 110, lvl.name, {
-      fontFamily: "ui-sans-serif, system-ui",
-      fontSize: "30px",
-      color: "#e8eef8",
-      fontStyle: "bold",
-    }).setOrigin(0.5);
+    // Name — compact floor 16 px (approved: the live build's ~7 px phone name was a bug)
+    const nameSize = Math.max(16, m.nameSize);
+    const nameY = compact ? -h / 2 + 52 : -h / 2 + 56 + 14;
+    const name = this.add
+      .text(0, nameY, lvl.name, { fontFamily: "ui-sans-serif, system-ui", fontSize: `${nameSize}px`, color: "#e8eef8", fontStyle: "bold", align: "center", wordWrap: { width: w - 28 } })
+      .setOrigin(0.5, 0);
     card.add(name);
 
-    const blurb = this.add.text(0, -h / 2 + 160, lvl.win.biologyLine, {
-      fontFamily: "ui-sans-serif, system-ui",
-      fontSize: "15px",
-      color: "#8fb6ff",
-      fontStyle: "italic",
-      align: "center",
-      wordWrap: { width: w - 60 },
-    }).setOrigin(0.5, 0);
-    card.add(blurb);
+    if (m.showBlurb) {
+      const blurb = this.add
+        .text(0, nameY + nameSize + 8, lvl.win.biologyLine, { fontFamily: "ui-sans-serif, system-ui", fontSize: `${m.blurbSize}px`, color: "#8fb6ff", fontStyle: "italic", align: "center", wordWrap: { width: w - 36 } })
+        .setOrigin(0.5, 0);
+      card.add(blurb);
+    }
 
     if (lvl.unlocked) {
-      const playBtn = this.makePlayButton(0, h / 2 - 48, "PLAY", () => this.launch(lvl));
-      card.add(playBtn);
+      const play = this.makePlayButton(0, m.playY, "PLAY", m.buttonWidth, m.buttonHeight, () => this.launch(lvl));
+      card.add(play);
+      if (wholeCardClickable) {
+        // Invisible full-card launch rect (desktop modes only)
+        const hit = this.add
+          .rectangle(0, 0, w, h, 0xffffff, 0.001)
+          .setInteractive({ useHandCursor: true })
+          .on("pointerdown", () => this.launch(lvl));
+        card.addAt(hit, 0);
+      }
     } else {
-      const locked = this.add.text(0, h / 2 - 48, "Coming Soon", {
-        fontFamily: "ui-sans-serif, system-ui",
-        fontSize: "16px",
-        color: "#5a6a80",
-      }).setOrigin(0.5);
+      const locked = this.add
+        .text(0, m.playY, "Coming Soon", { fontFamily: "ui-sans-serif, system-ui", fontSize: "14px", color: "#5a6a80" })
+        .setOrigin(0.5);
       card.add(locked);
     }
+    return card;
   }
 
-  private makePlayButton(x: number, y: number, label: string, cb: () => void): Phaser.GameObjects.Container {
+  private makePlayButton(
+    x: number, y: number, label: string, bw: number, bh: number, cb: () => void,
+  ): Phaser.GameObjects.Container {
     const c = this.add.container(x, y);
-    const g = this.add.graphics();
-    g.fillStyle(0xffd060, 0.95);
-    g.fillRoundedRect(-90, -22, 180, 44, 10);
-    c.add(g);
-    const t = this.add.text(0, 0, label, {
-      fontFamily: "ui-sans-serif, system-ui",
-      fontSize: "20px",
-      color: "#1a1208",
-      fontStyle: "bold",
-    }).setOrigin(0.5);
+    const bg = this.add.graphics();
+    const paint = (col: number, a: number): void => {
+      bg.clear();
+      bg.fillStyle(col, a);
+      bg.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
+    };
+    paint(0xffd060, 0.95);
+    c.add(bg);
+    const t = this.add
+      .text(0, 0, label, { fontFamily: "ui-sans-serif, system-ui", fontSize: `${Math.max(13, Math.round(bh * 0.42))}px`, color: "#1a1208", fontStyle: "bold" })
+      .setOrigin(0.5);
     c.add(t);
-    const hit = this.add.rectangle(0, 0, 180, 44, 0xffffff, 0.001)
+    const hit = this.add
+      .rectangle(0, 0, bw, bh, 0xffffff, 0.001)
       .setInteractive({ useHandCursor: true })
-      .on("pointerdown", cb)
-      .on("pointerover", () => g.clear().fillStyle(0xffe79a, 1).fillRoundedRect(-90, -22, 180, 44, 10))
-      .on("pointerout", () => g.clear().fillStyle(0xffd060, 0.95).fillRoundedRect(-90, -22, 180, 44, 10));
+      .on("pointerdown", (e: unknown) => {
+        // Don't let the whole-card click rect (desktop) fire too
+        const ev = e as { event?: { stopPropagation?: () => void } };
+        ev.event?.stopPropagation?.();
+        cb();
+      })
+      .on("pointerover", () => paint(0xffe79a, 1))
+      .on("pointerout", () => paint(0xffd060, 0.95));
     c.add(hit);
     return c;
   }
@@ -139,7 +361,3 @@ export class LevelSelectScene extends Phaser.Scene {
     this.scene.start("level", { levelId: lvl.id });
   }
 }
-
-// Ensure unused import is harmless (build target)
-void WORLD_WIDTH;
-void WORLD_HEIGHT;
