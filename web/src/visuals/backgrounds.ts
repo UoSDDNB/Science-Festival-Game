@@ -55,30 +55,34 @@ function drawNasalJourney(g: Phaser.GameObjects.Graphics, def: LevelDef, worldW:
   const grassAccent = hexToInt(def.palette.groundAccent);
   const skin = 0xe8b894;
   const skinDark = 0xb87c5a;
+  const hair = 0x5a3a2a;
+  const hairDark = 0x3a241a;
   const mucosa = 0xe88a96;
   const mucosaDark = 0xa05060;
   const innerTissue = 0x6a2a36;
+  const lumen = 0xf3c2c8;
 
-  // Background bands per zone — paint a horizontal gradient that morphs across zones
+  // Background bands (calm, per-zone) — garden sky / face peach / interior tissue
   const bands = 60;
   for (let i = 0; i < bands; i++) {
     const t = i / (bands - 1);
-    const skyCol = lerpColor(skyTop, skyBot, t);
-    g.fillStyle(skyCol, 1);
+    g.fillStyle(lerpColor(skyTop, skyBot, t), 1);
     g.fillRect(0, (i * WORLD_HEIGHT) / bands, 1280, WORLD_HEIGHT / bands + 1);
   }
-  // Face zone — uniform pinkish flesh tone behind
-  g.fillStyle(0xf5d8c0, 1);
-  g.fillRect(1280, 0, 1120, WORLD_HEIGHT);
-  // Mucosa zone — warm tunnel
+  // Face zone — calm near-uniform peach gradient (less busy → the face reads clearly)
   for (let i = 0; i < bands; i++) {
     const t = i / (bands - 1);
-    const col = lerpColor(mucosa, innerTissue, t);
-    g.fillStyle(col, 1);
+    g.fillStyle(lerpColor(0xf4dcc6, 0xe7c3a5, t), 1);
+    g.fillRect(1280, (i * WORLD_HEIGHT) / bands, 1120, WORLD_HEIGHT / bands + 1);
+  }
+  // Interior zone — deeper body tissue
+  for (let i = 0; i < bands; i++) {
+    const t = i / (bands - 1);
+    g.fillStyle(lerpColor(mucosaDark, innerTissue, t), 1);
     g.fillRect(2400, (i * WORLD_HEIGHT) / bands, worldW - 2400, WORLD_HEIGHT / bands + 1);
   }
 
-  // --- Zone 1: Garden ---
+  // --- Zone 1: Garden (kept calm — a few soft flowers, no busy specks) ---
   // Sun
   g.fillStyle(0xfff0a0, 0.9);
   g.fillCircle(220, 220, 70);
@@ -97,64 +101,139 @@ function drawNasalJourney(g: Phaser.GameObjects.Graphics, def: LevelDef, worldW:
     const h = 12 + pseudo(i, 5) * 18;
     g.fillTriangle(x - 2, 880, x + 2, 880, x + pseudo(i, 7) * 4, 880 - h);
   }
-  // Flower silhouettes (a small bouquet around the fire position at x=380, y=720)
-  drawFlower(g, 380, 720, 1.0, 0xffe060, 0xff9a30); // primary — the source flower
+  // A small, sparse flower cluster around the pollen source (x=380, y=720)
+  drawFlower(g, 380, 720, 1.0, 0xffe060, 0xff9a30);
   drawFlower(g, 250, 780, 0.7, 0xffb0d0, 0xc04060);
   drawFlower(g, 540, 760, 0.65, 0xb0d0ff, 0x4060c0);
-  drawFlower(g, 720, 780, 0.6, 0xffd060, 0xff9a30);
-  drawFlower(g, 940, 770, 0.55, 0xd0ffd0, 0x40a040);
-  // A few drifting pollen specks
-  g.fillStyle(0xfff080, 0.85);
-  for (let i = 0; i < 12; i++) {
-    g.fillCircle(380 + pseudo(i, 11) * 200 - 100, 600 + pseudo(i, 13) * 200, 2 + pseudo(i, 17) * 2);
-  }
 
-  // --- Zone 2: Face profile ---
-  // Side profile of a head facing left (nose pointing toward the garden).
-  // Drawn at full vertical extent with the nostril roughly at y=540.
-  // Outline curve: forehead, brow, nose bridge, nose tip, nostril, lip, chin, jaw.
+  // --- Zone 2: Face — a clear left-facing profile (nose → garden) ---
+  // The head is the "outside world". An esophagus/nasal tube leaves the back
+  // of the head and leads INTO the interior zone (x>2400) where the mast cell
+  // sits — the player is "zooming in" to the inside of the body.
+  //
+  // Head silhouette: a large rounded head centred ~(2040, 470), with a
+  // pronounced nose bridge + tip pointing LEFT at ~(1420, 540), a closed
+  // eye, brow, cheek, lips, chin, and a neck going down to the collar.
   g.fillStyle(skin, 1);
-  // Big face mass (back of head + cheeks)
-  g.fillEllipse(2050, 540, 720, 980);
-  // Forehead bulge
-  g.fillEllipse(1800, 320, 280, 320);
-  // Cheek/jaw extension into right edge
-  g.fillEllipse(2250, 800, 500, 380);
-  // Nose: a triangular protrusion pointing left at y≈540
+  // Cranium / back of head (big round mass)
+  g.fillEllipse(2080, 430, 760, 820);
+  // Face front: forehead → nose bridge → nose tip → upper lip → chin
   g.beginPath();
-  g.moveTo(1700, 480);
-  g.lineTo(1450, 540); // nose tip pointing left
-  g.lineTo(1700, 600);
-  g.lineTo(1740, 560);
+  g.moveTo(1700, 120);            // top of forehead
+  g.lineTo(1560, 240);            // brow ridge
+  g.lineTo(1500, 360);            // nose bridge start
+  g.lineTo(1420, 470);            // nose bridge (slanted)
+  g.lineTo(1400, 545);            // NOSE TIP pointing left (the pollen entry)
+  g.lineTo(1470, 590);            // under the nose
+  g.lineTo(1470, 660);            // upper lip line
+  g.lineTo(1500, 700);            // lips
+  g.lineTo(1480, 780);            // chin front
+  g.lineTo(1560, 880);            // chin bottom
+  g.lineTo(1900, 960);            // under jaw
+  g.lineTo(1900, 120);
   g.closePath();
   g.fillPath();
-  // Nostril hole (the entry point for pollen)
-  g.fillStyle(0x4a2030, 1);
-  g.fillEllipse(1620, 580, 36, 22);
-  // Eye (closed-ish)
-  g.fillStyle(skinDark, 0.85);
-  g.lineStyle(3, skinDark, 0.85);
+  // Neck
+  g.fillRect(1980, 900, 320, WORLD_HEIGHT - 900);
+
+  // Hair (covers the back/top of the cranium)
+  g.fillStyle(hair, 1);
   g.beginPath();
-  g.moveTo(1860, 430);
-  g.lineTo(1980, 425);
+  g.moveTo(1700, 120);
+  qcurve(g, 1700, 120, 2100, 20, 2420, 300);
+  g.lineTo(2440, 520);
+  qcurve(g, 2440, 520, 2360, 420, 2260, 430);
+  qcurve(g, 2260, 430, 2050, 380, 1900, 430);
+  g.lineTo(1820, 260);
+  g.lineTo(1700, 120);
+  g.closePath();
+  g.fillPath();
+  // Hair sheen
+  g.fillStyle(hairDark, 0.4);
+  g.fillEllipse(2200, 300, 260, 120);
+
+  // Nostril (the entry point for the pollen) — dark slit at the nose tip
+  g.fillStyle(0x4a2030, 1);
+  g.fillEllipse(1450, 560, 34, 22);
+
+  // Eye — a clear open eye so it reads as a FACE (not a silhouette)
+  // White of the eye + iris + pupil + upper lid + brow
+  g.fillStyle(0xffffff, 1);
+  g.fillEllipse(1720, 400, 96, 54);
+  g.fillStyle(0x6a4a2a, 1);
+  g.fillCircle(1716, 402, 26);
+  g.fillStyle(0x1a0f08, 1);
+  g.fillCircle(1716, 402, 12);
+  g.fillStyle(0xffffff, 0.85);
+  g.fillCircle(1724, 394, 5);
+  // Upper lid (thick line over the eye)
+  g.lineStyle(6, 0x2a1810, 0.9);
+  g.beginPath();
+  g.moveTo(1672, 384);
+  qcurve(g, 1672, 384, 1720, 366, 1768, 384);
   g.strokePath();
   // Eyebrow
-  g.fillStyle(0x4a2818, 0.9);
-  g.fillEllipse(1900, 400, 110, 14);
-  // Lip line
-  g.lineStyle(2, skinDark, 0.85);
+  g.fillStyle(0x3a2418, 1);
   g.beginPath();
-  g.moveTo(1650, 720);
-  g.lineTo(1830, 740);
+  g.moveTo(1660, 344);
+  qcurve(g, 1660, 344, 1720, 318, 1790, 340);
+  g.lineTo(1786, 356);
+  qcurve(g, 1786, 356, 1722, 336, 1668, 360);
+  g.closePath();
+  g.fillPath();
+
+  // Cheek blush
+  g.fillStyle(0xe89a80, 0.35);
+  g.fillEllipse(1620, 560, 110, 70);
+
+  // Lips
+  g.fillStyle(0xb85a5a, 1);
+  g.beginPath();
+  g.moveTo(1480, 660);
+  qcurve(g, 1480, 660, 1560, 650, 1640, 668);
+  qcurve(g, 1640, 668, 1560, 700, 1486, 700);
+  g.closePath();
+  g.fillPath();
+  g.lineStyle(2, 0x5a2020, 0.5);
+  g.beginPath();
+  g.moveTo(1484, 672); g.lineTo(1640, 672); g.strokePath();
+
+  // Ear
+  g.fillStyle(skinDark, 0.5);
+  g.fillEllipse(2300, 540, 56, 96);
+
+  // Soft face shading (depth on the cheek/jaw)
+  g.fillStyle(0x000000, 0.06);
+  g.fillEllipse(2050, 760, 320, 240);
+
+  // --- The esophagus / nasal tube: from the throat INTO the interior ---
+  // A curved tube leaving the throat (behind the chin), dipping down, then
+  // sweeping RIGHT into the interior zone (x>2400) to open on the mast cell
+  // — the "zoom in": the outside face connects to the inside of the body.
+  // Drawn as a thick stroked path (mucosal wall) + a lighter lumen inside.
+  const tubePts = [
+    [2100, 820], [2280, 920], [2480, 900], [2720, 760], [2930, 630],
+  ];
+  // Outer mucosal wall (thick)
+  g.lineStyle(150, mucosaDark, 1);
+  g.beginPath();
+  g.moveTo(tubePts[0]![0], tubePts[0]![1]);
+  for (let i = 1; i < tubePts.length; i++) g.lineTo(tubePts[i]![0], tubePts[i]![1]);
   g.strokePath();
-  // Subtle face shading
-  g.fillStyle(0x000000, 0.08);
-  g.fillEllipse(2200, 700, 320, 380);
-  // Ear hint
-  g.fillStyle(skin, 1);
-  g.fillEllipse(2350, 540, 50, 90);
-  g.fillStyle(skinDark, 0.6);
-  g.fillEllipse(2350, 540, 22, 50);
+  // Inner lumen (lighter, the open passage)
+  g.lineStyle(92, lumen, 1);
+  g.beginPath();
+  g.moveTo(tubePts[0]![0], tubePts[0]![1]);
+  for (let i = 1; i < tubePts.length; i++) g.lineTo(tubePts[i]![0], tubePts[i]![1]);
+  g.strokePath();
+  // Cilia bumps along the tube wall
+  g.fillStyle(mucosa, 0.9);
+  for (let i = 0; i < tubePts.length - 1; i++) {
+    const [ax, ay] = tubePts[i]!;
+    const [bx, by] = tubePts[i + 1]!;
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    g.fillCircle(mx, my, 14);
+  }
 
   // --- Zone 3: Nasal interior ---
   // A receding tunnel — upper and lower mucosa walls converging deeper.
@@ -388,6 +467,17 @@ function drawMountainRow(
   g.lineTo(0, WORLD_HEIGHT);
   g.closePath();
   g.fillPath();
+}
+
+/** Approximate a quadratic Bézier with sampled lineTo segments (Graphics here
+ *  has no quadraticCurveTo). Appends points to the CURRENT path. */
+function qcurve(g: Phaser.GameObjects.Graphics, x0: number, y0: number, cx: number, cy: number, x1: number, y1: number, n = 12): void {
+  for (let i = 1; i <= n; i++) {
+    const t = i / n, mt = 1 - t;
+    const x = mt * mt * x0 + 2 * mt * t * cx + t * t * x1;
+    const y = mt * mt * y0 + 2 * mt * t * cy + t * t * y1;
+    g.lineTo(x, y);
+  }
 }
 
 function lerpColor(a: number, b: number, t: number): number {

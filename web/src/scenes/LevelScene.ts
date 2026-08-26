@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { HeatField } from "../sim/HeatField";
 import { HeatOverlay } from "../visuals/heatOverlay";
 import { buildBackground } from "../visuals/backgrounds";
+import { buildInterior, InteriorVisual } from "../visuals/interior";
 import { buildCreature, CreatureVisual } from "../visuals/creature";
 import { FireVisual } from "../visuals/fire";
 import { GestureTracker } from "../input/GestureTracker";
@@ -38,6 +39,7 @@ export class LevelScene extends Phaser.Scene {
   private overlay!: HeatOverlay;
   private creature!: CreatureVisual;
   private fire!: FireVisual;
+  private interior: InteriorVisual | null = null;
   private gestures!: GestureTracker;
   private thermometer!: Thermometer;
   private hints!: HintSystem;
@@ -90,6 +92,7 @@ export class LevelScene extends Phaser.Scene {
     this.done = false;
     this.extinguishedThisDrag = false;
     this.firePutOut = false;
+    this.interior = null; // reset per level — only nasal_journey builds one
     this.dragPoints = [];
     this.cameraFocusX = Math.max(WORLD_WIDTH / 2, Math.min(this.worldWidth - WORLD_WIDTH / 2, def.fire.x));
     this.cameraFocusY = WORLD_HEIGHT / 2;
@@ -108,6 +111,13 @@ export class LevelScene extends Phaser.Scene {
     // Background
     const bg = buildBackground(this, this.def);
     this.worldLayer.add(bg);
+
+    // Living interior (mast_cell only) — breathing lungs + drifting bacteria,
+    // drawn between the background and the heat overlay.
+    if (this.def.background === "nasal_journey") {
+      this.interior = buildInterior(this, this.def);
+      this.worldLayer.add(this.interior.container);
+    }
 
     // Obstacles (drawn before the heat overlay so the overlay highlights them).
     // The rendered rocks are EXACTLY the collision geometry in `obstaclesOf` —
@@ -304,6 +314,7 @@ export class LevelScene extends Phaser.Scene {
     this.field.update(dt);
     this.overlay.update();
     this.fire.update(this.fireIntensity);
+    this.interior?.update(dt);
 
     // Camera follow — lerp focus toward target each frame
     if (this.cameraFollow) {
