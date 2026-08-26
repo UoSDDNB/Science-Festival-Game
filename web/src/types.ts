@@ -57,6 +57,11 @@ export interface LevelDef {
   fire: { x: number; y: number; tapRadius: number; kind?: FireKind };
   creature: { x: number; y: number; kind: CreatureKind; size: number; encased?: boolean };
   obstacle?: { x: number; y: number; radius: number; kind?: "boulder" | "fibre" };
+  /** Multiple obstacles (e.g. a boulder wall the fire must route around). When
+   *  present, collision + rendering use this array; the singular `obstacle`
+   *  above is the fallback when `obstacles` is absent. Touching any obstacle
+   *  surface extinguishes a dragged fire. */
+  obstacles?: Array<{ x: number; y: number; radius: number; kind?: "boulder" | "fibre" }>;
   sim: SimConfig;
   win: WinConfig;
   fail?: FailConfig;
@@ -76,3 +81,16 @@ export const WORLD_HEIGHT = 1080;
 export const GRID_W = 48;
 export const GRID_H = 27;
 export const CELL_SIZE = WORLD_WIDTH / GRID_W; // 40
+
+/**
+ * Single source of truth for a level's obstacle geometry: the `obstacles`
+ * array when present, else the legacy singular `obstacle`, else none.
+ * Collision, rendering, and the heat-field mask all read this so the rocks
+ * you SEE are exactly the rocks that EXTINGUISH a dragged fire.
+ */
+export type ObstacleDef = { x: number; y: number; radius: number; kind?: "boulder" | "fibre" };
+export function obstaclesOf(def: LevelDef): ObstacleDef[] {
+  if (def.obstacles && def.obstacles.length) return def.obstacles;
+  if (def.obstacle) return [def.obstacle];
+  return [];
+}

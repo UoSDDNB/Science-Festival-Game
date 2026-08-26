@@ -121,11 +121,19 @@ function drawNorse(
   flame(fs, hexToInt(pal.fire), 0.95);
   flame(fs * 0.62, hexToInt(pal.fireHot), 0.95);
   flame(fs * 0.32, hexToInt(pal.accent), 1);
-  // Boulder (centre)
-  g.fillStyle(hexToInt(pal.obstacle), 1);
-  g.fillCircle(x + w * 0.5, y + h * 0.66, m * 0.15);
-  g.fillStyle(0xffffff, 0.14);
-  g.fillCircle(x + w * 0.47, y + h * 0.61, m * 0.06);
+  // Boulder wall (centre): three rocks the fire must route around —
+  // mirrors the in-level `obstacles` geometry.
+  const boulders: Array<[number, number, number]> = [
+    [0.44, 0.34, 0.115],
+    [0.52, 0.62, 0.135],
+    [0.40, 0.82, 0.115],
+  ];
+  for (const [bx, by, br] of boulders) {
+    g.fillStyle(hexToInt(pal.obstacle), 1);
+    g.fillCircle(x + w * bx, y + h * by, m * br);
+    g.fillStyle(0xffffff, 0.14);
+    g.fillCircle(x + w * bx - m * br * 0.2, y + h * by - m * br * 0.25, m * br * 0.5);
+  }
   // Sleeping coiled dragon (right)
   const dx = x + w * 0.8, dy = y + h * 0.7;
   const ds = m * 0.2;

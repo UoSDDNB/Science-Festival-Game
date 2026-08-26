@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { HeatField } from "../sim/HeatField";
-import { LevelDef, WORLD_WIDTH, WORLD_HEIGHT } from "../types";
+import { LevelDef, WORLD_WIDTH, WORLD_HEIGHT, obstaclesOf } from "../types";
 
 /**
  * F3-toggleable debug grid: x/y rulers, fire/creature/obstacle markers,
@@ -111,12 +111,12 @@ export class DebugOverlay {
     g.lineStyle(2, 0x5ad0ff, 0.35);
     g.strokeCircle(this.def.creature.x, this.def.creature.y, this.field.targetRadius * this.field.cellSize);
 
-    // Obstacle marker
-    if (this.def.obstacle) {
+    // Obstacle markers (all of them — the array is the single source of truth)
+    for (const obs of obstaclesOf(this.def)) {
       g.fillStyle(0xff3a3a, 0.9);
-      g.fillCircle(this.def.obstacle.x, this.def.obstacle.y, 9);
+      g.fillCircle(obs.x, obs.y, 9);
       g.lineStyle(2, 0xff3a3a, 0.45);
-      g.strokeCircle(this.def.obstacle.x, this.def.obstacle.y, this.def.obstacle.radius);
+      g.strokeCircle(obs.x, obs.y, obs.radius);
     }
 
     this.heatLabel.setText(`heat=${this.currentTargetHeat.toFixed(0)}°  int=${this.intensity.toFixed(2)}`);

@@ -12,7 +12,7 @@ import { DebugOverlay } from "../ui/DebugOverlay";
 import { SneezeCutscene } from "../ui/SneezeCutscene";
 import { FailOverlay } from "../ui/FailOverlay";
 import { getLevel } from "../levels";
-import { LevelDef, WORLD_WIDTH, WORLD_HEIGHT, GRID_H, CELL_SIZE } from "../types";
+import { LevelDef, WORLD_WIDTH, WORLD_HEIGHT, GRID_H, CELL_SIZE, obstaclesOf } from "../types";
 import { hexToInt } from "../visuals/palette";
 
 interface LaunchData {
@@ -53,6 +53,11 @@ export class LevelScene extends Phaser.Scene {
   private timeAboveDanger = 0;
   private done = false;
   private dragPoints: Array<{ x: number; y: number; t: number }> = [];
+  /** Set once a drag has been extinguished by a boulder, so the "Put out!"
+   *  warning fires once per drag (not spammed every pointer-move event). */
+  private extinguishedThisDrag = false;
+  /** True while the fire has been put out by a boulder and not yet re-tapped. */
+  private firePutOut = false;
 
   // Camera state
   private cameraFollow = false;
@@ -83,6 +88,8 @@ export class LevelScene extends Phaser.Scene {
     this.timeInTarget = 0;
     this.timeAboveDanger = 0;
     this.done = false;
+    this.extinguishedThisDrag = false;
+    this.firePutOut = false;
     this.dragPoints = [];
     this.cameraFocusX = Math.max(WORLD_WIDTH / 2, Math.min(this.worldWidth - WORLD_WIDTH / 2, def.fire.x));
     this.cameraFocusY = WORLD_HEIGHT / 2;
@@ -102,10 +109,11 @@ export class LevelScene extends Phaser.Scene {
     const bg = buildBackground(this, this.def);
     this.worldLayer.add(bg);
 
-    // Obstacle (drawn before heat overlay so the overlay highlights it)
-    if (this.def.obstacle) {
+    // Obstacles (drawn before the heat overlay so the overlay highlights them).
+    // The rendered rocks are EXACTLY the collision geometry in `obstaclesOf` —
+    // what you SEE is what extinguishes a dragged fire.
+    for (const obs of obstaclesOf(this.def)) {
       const og = this.add.graphics();
-      const obs = this.def.obstacle;
       const col = hexToInt(this.def.palette.obstacle);
       if (obs.kind === "fibre") {
         og.fillStyle(col, 0.95);
@@ -122,7 +130,11 @@ export class LevelScene extends Phaser.Scene {
         og.lineStyle(3, 0x0a0a14, 0.4);
         og.strokeCircle(obs.x, obs.y, obs.radius);
         og.fillStyle(0xffffff, 0.08);
-        og.fillCircle(obs.x - 20, obs.y - 30, obs.radius * 0.55);
+        og.fillCircle(obs.x - obs.radius * 0.2, obs.y - obs.radius * 0.25, obs.radius * 0.55);
+        // Faint cracks so boulders read as rock, not flat discs
+        og.lineStyle(2, 0x000000, 0.2);
+        og.lineBetween(obs.x - obs.radius * 0.5, obs.y - obs.radius * 0.1, obs.x - obs.radius * 0.05, obs.y + obs.radius * 0.35);
+        og.lineBetween(obs.x + obs.radius * 0.15, obs.y - obs.radius * 0.4, obs.x + obs.radius * 0.45, obs.y - obs.radius * 0.05);
       }
       og.setDepth(3);
       this.worldLayer.add(og);
@@ -148,9 +160,9 @@ export class LevelScene extends Phaser.Scene {
     const [tcx, tcy] = this.field.worldToGrid(this.def.creature.x, this.def.creature.y);
     this.field.targetCx = tcx;
     this.field.targetCy = tcy;
-    if (this.def.obstacle) {
-      const [ocx, ocy] = this.field.worldToGrid(this.def.obstacle.x, this.def.obstacle.y);
-      this.field.setObstacleCircle(ocx, ocy, Math.ceil(this.def.obstacle.radius / CELL_SIZE));
+    for (const obs of obstaclesOf(this.def)) {
+      const [ocx, ocy] = this.field.worldToGrid(obs.x, obs.y);
+      this.field.setObstacleCircle(ocx, ocy, Math.ceil(obs.radius / CELL_SIZE));
     }
     this.field.injectHeat(this.def.fire.x, this.def.fire.y, 18, 4);
 
@@ -358,11 +370,18 @@ export class LevelScene extends Phaser.Scene {
     this.manualHeat = Math.min(100, this.manualHeat + 2);
     this.spawnBurst();
     this.hints.notifyTap();
+    if (this.firePutOut) {
+      // Re-light a fire that a boulder put out (tap = the spark that starts it again)
+      this.firePutOut = false;
+      this.fireIntensity = 1.0;
+      this.hints.showEncouragement("The fire is lit again!");
+    }
     if (this.cameraFollow) this.cameraTargetX = x;
   }
 
   private handleDragStart(x: number, y: number): void {
     if (this.done) return;
+    this.extinguishedThisDrag = false;
     if (this.isNearFire(x, y)) {
       this.field.injectHeat(x, y, this.def.sim.tapHeat * this.fireIntensity, 3.5);
       this.manualHeat = Math.min(100, this.manualHeat + 2);
@@ -375,9 +394,15 @@ export class LevelScene extends Phaser.Scene {
 
   private handleDragMove(x: number, y: number): void {
     if (this.done) return;
-    if (this.def.obstacle && Phaser.Math.Distance.Between(x, y, this.def.obstacle.x, this.def.obstacle.y) < this.def.obstacle.radius) {
-      this.spawnDeflection(x, y);
-      return;
+    // Boulder collision — touching a rock's SURFACE extinguishes the fire
+    // (the rock is an insulator: the signal cannot be pushed straight through
+    // it). The drag must be routed AROUND the boulders. This is what makes
+    // "around the boulders" a genuine requirement, not a hint.
+    for (const obs of obstaclesOf(this.def)) {
+      if (Phaser.Math.Distance.Between(x, y, obs.x, obs.y) < obs.radius) {
+        this.extinguishFire(x, y);
+        return;
+      }
     }
 
     const distFromFire = Phaser.Math.Distance.Between(x, y, this.def.fire.x, this.def.fire.y);
@@ -467,18 +492,42 @@ export class LevelScene extends Phaser.Scene {
     }
   }
 
-  private spawnDeflection(x: number, y: number): void {
-    for (let i = 0; i < 3; i++) {
+  /**
+   * The dragged fire touched a boulder surface → the fire is put out.
+   * - Zero the dragged activation (manualHeat) and cool the fire source so the
+   *   next drag carries no signal; re-tapping the fire re-lights it.
+   * - Drop the trail so the player sees the spark die at the rock.
+   * - Show the "put out" feedback (once per drag) + a puff of cooling steam.
+   */
+  private extinguishFire(x: number, y: number): void {
+    this.manualHeat = 0;
+    this.timeInTarget = 0;
+    this.inTarget = false;
+    this.fireIntensity = 0.3;
+    this.firePutOut = true;
+    this.dragPoints = [];
+    if (!this.extinguishedThisDrag) {
+      this.extinguishedThisDrag = true;
+      this.hints.showWarning("Put out! Route the fire AROUND the boulders…");
+    }
+    this.spawnExtinguish(x, y);
+  }
+
+  private spawnExtinguish(x: number, y: number): void {
+    // Cooling steam + a few cold embers — the fire died at the rock
+    for (let i = 0; i < 10; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const dist = 15 + Math.random() * 25;
-      const s = this.add.circle(x, y, 4, 0x9ad8ff, 0.85).setDepth(8);
+      const dist = 20 + Math.random() * 45;
+      const s = this.add.circle(x, y, 5 + Math.random() * 5, 0x9ad8ff, 0.75).setDepth(8);
       this.worldLayer.add(s);
       this.tweens.add({
         targets: s,
         x: x + Math.cos(angle) * dist,
-        y: y + Math.sin(angle) * dist,
+        y: y + Math.sin(angle) * dist - 12,
         alpha: 0,
-        duration: 250,
+        scale: 1.8,
+        duration: 380,
+        ease: "Cubic.Out",
         onComplete: () => s.destroy(),
       });
     }

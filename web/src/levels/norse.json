@@ -18,7 +18,11 @@
   },
   "fire": { "x": 360, "y": 880, "tapRadius": 200 },
   "creature": { "x": 1500, "y": 360, "kind": "dragon", "size": 1.4 },
-  "obstacle": { "x": 920, "y": 560, "radius": 140 },
+  "obstacles": [
+    { "x": 840, "y": 300, "radius": 110, "kind": "boulder" },
+    { "x": 950, "y": 560, "radius": 120, "kind": "boulder" },
+    { "x": 810, "y": 840, "radius": 110, "kind": "boulder" }
+  ],
   "sim": {
     "diffusion": 0.07,
     "dissipation": 0.008,
@@ -34,8 +38,8 @@
     "dangerHeat": 85,
     "sustainSeconds": 2.5,
     "title": "AWAKENED",
-    "body": "You guided primordial fire around the boulder and stirred the sleeping dragon.",
+    "body": "You guided primordial fire around the boulders and stirred the sleeping dragon. The rock is an insulator — the signal only wakes the dragon if it is routed through the gap, not pushed straight through the stone.",
     "biologyLine": "You just routed a signal through a pathway. Your cells do this billions of times a day."
   },
-  "hints": { "drag": "Drag from the fire, around the boulder, toward the dragon" }
+  "hints": { "drag": "Drag from the fire, around the boulders, toward the dragon" }
 }
