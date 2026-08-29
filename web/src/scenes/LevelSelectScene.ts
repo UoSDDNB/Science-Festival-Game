@@ -10,8 +10,15 @@ import { ScrollPanel } from "../ui/ScrollPanel";
  * (sci-game-live/assets-index.js) + semantic card previews (drawCardMotif).
  *
  * Three layout modes:
- *   desktop-row    — wide viewports: cards side by side.
- *   desktop-stack  — narrow-but-not-phone: cards stacked vertically.
+ *   desktop-row    — wide viewports: cards side by side. With many levels the
+ *                    cards shrink (180 px floor) and switch to the compact icon
+ *                    preview instead of the 56 px band.
+ *   desktop-stack  — narrow-but-not-phone: cards stacked vertically; when the
+ *                    stack overflows the viewport the cards live in a
+ *                    ScrollPanel (same drag+wheel component as phone mode) —
+ *                    this FIXES the pre-existing "last card clipped, no scroll"
+ *                    known issue, which became unavoidable once the level count
+ *                    grew past 3 (SESSION 7, 2026-08-28).
  *   phone-scroll   — tall portrait: vertical scrolling card list inside a
  *                    ScrollPanel (drag + wheel, off-screen cards culled).
  *
@@ -86,7 +93,10 @@ function computeLayout(w: number, h: number, count: number): CardLayout {
     const headerH = showSubtitle ? titleY + subtitleSize + 10 : titleY + titleSize * 0.5 + 12;
     const areaH = Math.max(120, h - headerH - 8);
     const contentHeight = count * ch + (count - 1) * gap;
-    const positions = Array.from({ length: count }, (_, i) => ({ x: cw / 2, y: i * (ch + gap) + ch / 2 }));
+    // Phone cards ALWAYS live in the ScrollPanel (content anchored at x=12):
+    // positions are SCREEN coords (card centre = w/2); rebuild subtracts the
+    // panel's viewport x (12) when adding them.
+    const positions = Array.from({ length: count }, (_, i) => ({ x: w / 2, y: i * (ch + gap) + ch / 2 }));
     return {
       mode: "phone-scroll", cardWidth: cw, cardHeight: ch, gap, compact: true,
       headerHeight: headerH, titleY, subtitleY,
@@ -95,7 +105,8 @@ function computeLayout(w: number, h: number, count: number): CardLayout {
     };
   }
 
-  // desktop-row — wide enough for all cards side by side
+  // desktop-row — wide enough that all cards fit side by side at the 220 px
+  // width (few levels: full 56 px band previews, non-compact).
   const rowTotal = count * ROW_CARD_MIN + (count - 1) * ROW_GAP;
   if (w >= rowTotal && w >= DESKTOP_ROW_MIN_W) {
     const cw = Phaser.Math.Clamp((w - ROW_GAP * (count - 1) - 48) / count, 220, 320);
@@ -112,18 +123,51 @@ function computeLayout(w: number, h: number, count: number): CardLayout {
     };
   }
 
-  // desktop-stack — narrow but not phone. NOTE: the stacked cards can overflow
-  // the viewport bottom (pre-existing live issue — logged in HANDOFF, not fixed
-  // in this pass per user steer).
+  // desktop-row with more cards than fit at 220 — many levels (>= 6): shrink
+  // to the 180 px compact floor (icon previews) in a single row, but ONLY when
+  // the floor-width row actually fits the viewport; otherwise fall through to
+  // the scrollable stack below. (At <= 5 levels the pre-existing behavior is
+  // preserved exactly: 220-min row, else stack.)
+  if (count >= 6 && w >= DESKTOP_ROW_MIN_W) {
+    const floorTotal = count * 180 + (count - 1) * 12;
+    if (w >= floorTotal) {
+      const cw = 180;
+      const gap = 12;
+      const ch = Phaser.Math.Clamp(h * 0.44, 300, 360);
+      const total = count * cw + (count - 1) * gap;
+      const startX = (w - total) / 2;
+      const y = h * 0.55;
+      const positions = Array.from({ length: count }, (_, i) => ({ x: startX + i * (cw + gap) + cw / 2, y }));
+      return {
+        mode: "desktop-row", cardWidth: cw, cardHeight: ch, gap, compact: true,
+        headerHeight: 0, titleY, subtitleY,
+        titleSize, subtitleSize, showSubtitle: true,
+        scrollAreaTop: 0, scrollAreaHeight: h, contentHeight: h, positions,
+      };
+    }
+  }
+
+  // desktop-stack — narrow but not phone. The scroll area starts under the
+  // header; when the stacked cards overflow it they go into a ScrollPanel so
+  // the bottom cards are reachable by drag/wheel (fixes the pre-existing
+  // desktop-stack clip, HANDOFF known issue #1 — the fix became necessary
+  // once the level count grew past 3).
   const sw = Phaser.Math.Clamp(w * 0.88, 260, 340);
   const sh = STACK_CARD_H;
   const headerH = showSubtitle ? titleY + subtitleSize + 16 : titleY + 16;
-  const positions = Array.from({ length: count }, (_, i) => ({ x: w / 2, y: headerH + i * (sh + STACK_GAP) + sh / 2 }));
+  const areaH = Math.max(160, h - headerH - 12);
+  const contentHeight = count * sh + (count - 1) * STACK_GAP;
+  const overflow = contentHeight > areaH;
+  // Positions are SCREEN coords (centre = w/2). In the non-overflow case the
+  // cards sit in uiRoot below the header; in the overflow case they enter the
+  // ScrollPanel (content anchored at x=12, y=scrollAreaTop) and rebuild
+  // subtracts the panel offsets.
+  const positions = Array.from({ length: count }, (_, i) => ({ x: w / 2, y: (overflow ? 0 : headerH) + i * (sh + STACK_GAP) + sh / 2 }));
   return {
     mode: "desktop-stack", cardWidth: sw, cardHeight: sh, gap: STACK_GAP, compact,
     headerHeight: headerH, titleY, subtitleY,
     titleSize, subtitleSize, showSubtitle: true,
-    scrollAreaTop: 0, scrollAreaHeight: h, contentHeight: h, positions,
+    scrollAreaTop: headerH, scrollAreaHeight: areaH, contentHeight, positions,
   };
 }
 
@@ -223,14 +267,19 @@ export class LevelSelectScene extends Phaser.Scene {
       );
     }
 
-    // Phone mode: cards go into a ScrollPanel
-    const host = this.layout.mode === "phone-scroll" ? this.createScrollParent(this.layout) : this.uiRoot;
-    const wholeCardClickable = this.layout.mode !== "phone-scroll";
+    // Phone + overflow-stack modes: cards go into a ScrollPanel
+    const scrollMode = this.layout.mode === "phone-scroll" || (this.layout.mode === "desktop-stack" && this.layout.contentHeight > this.layout.scrollAreaHeight);
+    const host = scrollMode ? this.createScrollParent(this.layout) : this.uiRoot;
+    const wholeCardClickable = !scrollMode;
 
     LEVELS.forEach((lvl, i) => {
       const pos = this.layout!.positions[i]!;
-      const card = this.makeCard(pos.x, pos.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, lvl, wholeCardClickable);
-      if (this.layout!.mode === "phone-scroll" && this.scrollPanel) {
+      // Panel-hosted cards: positions are screen coords, the panel content is
+      // anchored at x=12, y=scrollAreaTop — subtract the x offset so cards
+      // stay centred on w/2 on screen.
+      const cardX = scrollMode ? pos.x - 12 : pos.x;
+      const card = this.makeCard(cardX, pos.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, lvl, wholeCardClickable);
+      if (scrollMode && this.scrollPanel) {
         this.scrollPanel.add(card, this.layout!.cardHeight);
       } else {
         host.add(card);
