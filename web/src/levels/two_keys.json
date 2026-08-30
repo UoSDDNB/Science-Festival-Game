@@ -1,0 +1,56 @@
+{
+  "id": "two_keys",
+  "name": "Two Keys",
+  "order": 4,
+  "unlocked": true,
+  "background": "tissue",
+  "shakeWithHeat": true,
+  "palette": {
+    "bgTop": "#3a1220",
+    "bgBottom": "#7a2a3a",
+    "ground": "#5a1f2e",
+    "groundAccent": "#a04a5e",
+    "fire": "#ffe060",
+    "fireHot": "#fff5b8",
+    "obstacle": "#c89aa0",
+    "creature": "#ffb3c1",
+    "creatureAccent": "#7a1f2b",
+    "accent": "#ff6a8a"
+  },
+  "fire": { "x": 620, "y": 300, "tapRadius": 190, "kind": "pollen" },
+  "fireSecondary": { "x": 620, "y": 780, "tapRadius": 190, "kind": "pollen" },
+  "keyHeatCap": 45,
+  "creature": { "x": 1500, "y": 540, "kind": "mast_cell", "size": 1.4 },
+  "sim": {
+    "diffusion": 0.07,
+    "dissipation": 0.012,
+    "sourceHeat": 11,
+    "targetRadius": 2,
+    "tapHeat": 18,
+    "dragHeat": 14,
+    "decayPerSec": 6
+  },
+  "win": {
+    "minHeat": 50,
+    "maxHeat": 70,
+    "dangerHeat": 85,
+    "sustainSeconds": 3.5,
+    "cutscene": "sneeze",
+    "title": "CROSSED!",
+    "body": "Two allergens at once. Each grain alone only armed the mast cell — it is the CROSSED pair that flips the trigger, calcium pours in, and the granules empty in a burst.",
+    "biologyLine": "Mast cells need two IgE-bound allergens linked together to degranulate. One key won't do — that's why the signal has a bivalency requirement."
+  },
+  "fail": {
+    "triggerSeconds": 1.8,
+    "title": "ANAPHYLAXIS",
+    "body": "Too much. Both allergens pushed the cell far past its trigger — histamine flooded the tissue, blood vessels dilated, airways swelled, blood pressure crashed.",
+    "biologyLine": "Severe allergic reaction — life-threatening within minutes. This is why people with serious allergies carry adrenaline auto-injectors."
+  },
+  "hints": {
+    "drag": "Drag from EACH pollen grain, toward the cell",
+    "tap": "Tap BOTH pollen grains — one is not enough",
+    "hold": "Swirl around a grain to release more",
+    "pinch": "Spread two fingers (or press +) to release more"
+  },
+  "meterLabel": "Activation"
+}

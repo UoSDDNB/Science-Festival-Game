@@ -26,6 +26,8 @@ export function buildCreature(scene: Phaser.Scene, def: LevelDef): CreatureVisua
       return buildDragon(scene, def);
     case "mast_cell":
       return buildMastCell(scene, def);
+    case "neutrophil":
+      return buildNeutrophil(scene, def);
     case "sprite":
     default:
       return buildSprite(scene, def);
@@ -372,6 +374,67 @@ function buildSprite(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
     },
     iceDissolve: () => {},
     setThawed: () => {},
+  };
+}
+
+/**
+ * Neutrophil — a wandering immune cell with its signature lobed (3-4 lobe)
+ * nucleus. Used by the chemotaxis level ("Follow the Scent"): the creature
+ * STEERS toward the source when the signal is strong enough for it to sense.
+ */
+function buildNeutrophil(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
+  const c = scene.add.container(def.creature.x, def.creature.y);
+  c.setDepth(6);
+  const skin = hexToInt(def.palette.creature);
+  const accent = hexToInt(def.palette.creatureAccent);
+  const s = def.creature.size;
+
+  const g = scene.add.graphics();
+  // Cell body — a slightly irregular rounded blob
+  g.fillStyle(skin, 0.95);
+  g.fillEllipse(0, 0, 150 * s, 130 * s);
+  g.fillEllipse(-55 * s, -35 * s, 60 * s, 50 * s);
+  g.fillEllipse(55 * s, 30 * s, 55 * s, 45 * s);
+  g.lineStyle(3 * s, 0xffffff, 0.18);
+  g.strokeEllipse(0, 0, 150 * s, 130 * s);
+  // Lobed nucleus (the neutrophil signature: 3-4 connected lobes)
+  g.fillStyle(accent, 0.9);
+  g.fillEllipse(-38 * s, -8 * s, 52 * s, 40 * s);
+  g.fillEllipse(10 * s, 14 * s, 48 * s, 38 * s);
+  g.fillEllipse(48 * s, -16 * s, 44 * s, 36 * s);
+  g.lineStyle(4 * s, accent, 0.7);
+  g.lineBetween(-20 * s, -2, 8 * s, 8);
+  g.lineBetween(26 * s, 10, 40 * s, -8);
+  // Pseudopod nubs (migration look)
+  g.fillStyle(skin, 0.9);
+  g.fillEllipse(-75 * s, 30 * s, 34 * s, 18 * s);
+  g.fillEllipse(72 * s, -34 * s, 32 * s, 16 * s);
+  c.add(g);
+
+  // Heart / life signal (same glow texture as the other creatures)
+  const heart = scene.add.image(0, 0, "glow-warm");
+  heart.setBlendMode(Phaser.BlendModes.ADD);
+  heart.setAlpha(0).setScale(0.5 * s);
+  c.add(heart);
+
+  let beat = 0;
+  return {
+    container: c,
+    setLifeSignal: (t: number) => {
+      beat += 0.05;
+      const tt = clamp(t, 0, 1);
+      const p = Math.pow(Math.max(0, Math.sin(beat * (1 + tt * 3))), 0.4);
+      heart.setAlpha(tt * 0.9 * (0.6 + 0.4 * p));
+      heart.setScale(0.4 * s + p * 0.2 * s + tt * 0.2 * s);
+      // Subtle membrane pulse
+      g.setScale(1 + tt * 0.02 + p * 0.01 * tt);
+    },
+    iceDissolve: () => {
+      // not iced
+    },
+    setThawed: () => {
+      // handled by the level (reach win) — no state change needed
+    },
   };
 }
 

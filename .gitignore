@@ -19,6 +19,9 @@ build/
 # Claude Code local settings
 .claude/
 
+# Node
+web/node_modules/
+
 # BMAD planning artifacts
 _bmad/
 _bmad-output/

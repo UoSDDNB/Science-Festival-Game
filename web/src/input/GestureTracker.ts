@@ -22,6 +22,11 @@ export class GestureTracker {
   private readonly cb: GestureCallbacks;
   private readonly toWorld: ScreenToWorld;
   private pivot = new Phaser.Math.Vector2(0, 0);
+  /** Optional second swirl pivot (Two Keys: the second pollen grain). When
+   *  set, swirls are measured around whichever pivot the pointer is CLOSER
+   *  to, so a full revolution around EITHER grain stokes the intensity. */
+  private secondaryPivot: Phaser.Math.Vector2 | null = null;
+  private activePivotIndex = 0;
   private dragging = false;
   private dragId = -1;
   private prevAngle = 0;
@@ -46,6 +51,21 @@ export class GestureTracker {
     this.pivot.set(x, y);
   }
 
+  setSecondarySwirlPivot(x: number, y: number): void {
+    this.secondaryPivot = new Phaser.Math.Vector2(x, y);
+  }
+
+  /** Pick the pivot the pointer is closer to (primary only when no
+   *  secondary). Returns the pivot index (0/1) so the caller can detect a
+   *  pivot SWITCH and reset the angle accumulator (avoids phantom
+   *  revolutions from the jump between pivots). */
+  private selectPivot(wx: number, wy: number): number {
+    if (!this.secondaryPivot) return 0;
+    const dxa = wx - this.pivot.x, dya = wy - this.pivot.y;
+    const dxb = wx - this.secondaryPivot.x, dyb = wy - this.secondaryPivot.y;
+    return dxb * dxb + dyb * dyb < dxa * dxa + dya * dya ? 1 : 0;
+  }
+
   destroy(): void {
     this.scene.input.off(Phaser.Input.Events.POINTER_DOWN, this.handleDown, this);
     this.scene.input.off(Phaser.Input.Events.POINTER_MOVE, this.handleMove, this);
@@ -55,6 +75,11 @@ export class GestureTracker {
 
   private worldXY(pointer: Phaser.Input.Pointer): [number, number] {
     return this.toWorld(pointer.x, pointer.y);
+  }
+
+  private angleAround(idx: number, wx: number, wy: number): number {
+    const p = idx === 1 && this.secondaryPivot ? this.secondaryPivot : this.pivot;
+    return Math.atan2(wy - p.y, wx - p.x);
   }
 
   private activePointers(): Phaser.Input.Pointer[] {
@@ -78,7 +103,8 @@ export class GestureTracker {
     this.dragStartPos.set(wx, wy);
     this.dragStartTime = this.scene.time.now;
     this.accumAngle = 0;
-    this.prevAngle = Math.atan2(wy - this.pivot.y, wx - this.pivot.x);
+    this.activePivotIndex = this.selectPivot(wx, wy);
+    this.prevAngle = this.angleAround(this.activePivotIndex, wx, wy);
     this.cb.onDragStart?.(wx, wy);
   }
 
@@ -101,8 +127,15 @@ export class GestureTracker {
       this.movedSignificantly = true;
     }
 
-    // Swirl detection — angular displacement around pivot
-    const angle = Math.atan2(wy - this.pivot.y, wx - this.pivot.x);
+    // Swirl detection — angular displacement around the NEAREST pivot
+    const pIdx = this.selectPivot(wx, wy);
+    if (pIdx !== this.activePivotIndex) {
+      // Pointer crossed to the other grain — reset the angle bookkeeping so
+      // the jump between pivots can't register a phantom revolution.
+      this.activePivotIndex = pIdx;
+      this.accumAngle = 0;
+    }
+    const angle = this.angleAround(pIdx, wx, wy);
     let delta = angle - this.prevAngle;
     while (delta > Math.PI) delta -= Math.PI * 2;
     while (delta < -Math.PI) delta += Math.PI * 2;

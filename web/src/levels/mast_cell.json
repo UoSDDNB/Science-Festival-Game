@@ -35,6 +35,7 @@
     "maxHeat": 70,
     "dangerHeat": 85,
     "sustainSeconds": 3.5,
+    "cutscene": "sneeze",
     "title": "AAACHOO!",
     "body": "Just enough histamine. The mast cell tipped past threshold, calcium poured in, granules emptied into the tissue — and the body fired off a sneeze to expel the invader.",
     "biologyLine": "That's an allergic reaction. Mast cells coated in IgE dump histamine when allergens crosslink them. The sneeze is your body throwing them back out."

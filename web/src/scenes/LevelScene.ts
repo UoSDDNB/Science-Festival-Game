@@ -49,6 +49,11 @@ export class LevelScene extends Phaser.Scene {
 
   private fireIntensity = 1.0;
   private manualHeat = 0;
+  /** Per-key heat for dual-source "Two Keys" levels (def.keyHeatCap): the
+   *  meter shows keyA + keyB; each key decays proportionally and is capped so
+   *  a single source can never reach the win band alone (ideas 4/11). */
+  private keyA = 0;
+  private keyB = 0;
   private targetHeat = 0;
   private inTarget = false;
   private timeInTarget = 0;
@@ -60,6 +65,9 @@ export class LevelScene extends Phaser.Scene {
   private extinguishedThisDrag = false;
   /** True while the fire has been put out by a boulder and not yet re-tapped. */
   private firePutOut = false;
+  /** Which source a drag CARRIED (set at drag start); key-cap levels credit
+   *  that key's bucket. null = started away from every source. */
+  private dragKey: "a" | "b" | null = null;
 
   // Camera state
   private cameraFollow = false;
@@ -85,6 +93,9 @@ export class LevelScene extends Phaser.Scene {
     this.cameraFollow = def.cameraFollow ?? (this.worldWidth > WORLD_WIDTH);
     this.fireIntensity = 1;
     this.manualHeat = 0;
+    this.keyA = 0;
+    this.keyB = 0;
+    this.dragKey = null;
     this.targetHeat = 0;
     this.inTarget = false;
     this.timeInTarget = 0;
@@ -175,6 +186,20 @@ export class LevelScene extends Phaser.Scene {
       this.field.setObstacleCircle(ocx, ocy, Math.ceil(obs.radius / CELL_SIZE));
     }
     this.field.injectHeat(this.def.fire.x, this.def.fire.y, 18, 4);
+    // Second source (Two Keys): same source-cell re-heat + initial glow
+    if (this.def.fireSecondary) {
+      const [fcx2, fcy2] = this.field.worldToGrid(this.def.fireSecondary.x, this.def.fireSecondary.y);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const cx = fcx2 + dx;
+          const cy = fcy2 + dy;
+          if (cx >= 0 && cx < gridW && cy >= 0 && cy < GRID_H) {
+            this.field.sourceCells.push([cx, cy]);
+          }
+        }
+      }
+      this.field.injectHeat(this.def.fireSecondary.x, this.def.fireSecondary.y, 18, 4);
+    }
 
     // Heat overlay
     this.overlay = new HeatOverlay(this, this.field, this.worldWidth);
@@ -185,9 +210,14 @@ export class LevelScene extends Phaser.Scene {
     this.dragTrail.setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
     this.worldLayer.add(this.dragTrail);
 
-    // Fire + creature
+    // Fire + creature (primary source; the optional secondary is added below)
     this.fire = new FireVisual(this, this.def);
     this.worldLayer.add(this.fire.container);
+    if (this.def.fireSecondary) {
+      const secDef = { ...this.def, fire: this.def.fireSecondary };
+      const sec = new FireVisual(this, secDef);
+      this.worldLayer.add(sec.container);
+    }
     this.creature = buildCreature(this, this.def);
     this.worldLayer.add(this.creature.container);
 
@@ -219,6 +249,9 @@ export class LevelScene extends Phaser.Scene {
       (sx, sy) => this.screenToWorld(sx, sy),
     );
     this.gestures.setSwirlPivot(this.def.fire.x, this.def.fire.y);
+    if (this.def.fireSecondary) {
+      this.gestures.setSecondarySwirlPivot(this.def.fireSecondary.x, this.def.fireSecondary.y);
+    }
 
     this.input.keyboard?.on("keydown-F3", () => this.debug.toggle());
     this.input.keyboard?.on("keydown-PLUS", () => this.bumpIntensity(0.2));
@@ -307,7 +340,21 @@ export class LevelScene extends Phaser.Scene {
     if (!this.done) {
       this.fireIntensity = Phaser.Math.Linear(this.fireIntensity, 1.0, Math.min(1, dt * 0.6));
       this.field.sourceHeatScale = this.fireIntensity;
-      this.manualHeat = Math.max(0, this.manualHeat - this.def.sim.decayPerSec * dt);
+      if (this.def.keyHeatCap != null) {
+        // Two Keys: each key decays proportionally (ratio preserved), the
+        // meter total follows from the two caps.
+        const sum = this.keyA + this.keyB;
+        if (sum > 0) {
+          const dec = Math.min(sum, this.def.sim.decayPerSec * dt);
+          this.keyA = Math.max(0, this.keyA - dec * (this.keyA / sum));
+          this.keyB = Math.max(0, this.keyB - dec * (this.keyB / sum));
+          this.manualHeat = this.keyA + this.keyB;
+        } else {
+          this.manualHeat = 0;
+        }
+      } else {
+        this.manualHeat = Math.max(0, this.manualHeat - this.def.sim.decayPerSec * dt);
+      }
       this.targetHeat = this.manualHeat;
     }
 
@@ -371,14 +418,39 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private isNearFire(x: number, y: number): boolean {
-    return Phaser.Math.Distance.Between(x, y, this.def.fire.x, this.def.fire.y) < this.def.fire.tapRadius;
+    return this.sourceAt(x, y) !== null;
+  }
+
+  /** Which heat source (if any) is at this world point. "a" = def.fire,
+   *  "b" = the optional secondary (Two Keys). */
+  private sourceAt(x: number, y: number): "a" | "b" | null {
+    if (Phaser.Math.Distance.Between(x, y, this.def.fire.x, this.def.fire.y) < this.def.fire.tapRadius) return "a";
+    if (this.def.fireSecondary && Phaser.Math.Distance.Between(x, y, this.def.fireSecondary.x, this.def.fireSecondary.y) < this.def.fireSecondary.tapRadius) return "b";
+    return null;
+  }
+
+  /** Add activation heat, crediting a per-key bucket on key-cap levels
+   *  (Two Keys: each source is capped at keyHeatCap, so the win band — above
+   *  any single cap — is reachable ONLY with both sources. idea 4/11).
+   *  A null key (drag that started away from every source) earns no manual
+   *  heat on key-cap levels: the signal must be carried FROM a grain. */
+  private addHeat(amount: number, key: "a" | "b" | null): void {
+    if (this.def.keyHeatCap != null && this.def.fireSecondary) {
+      if (key == null) return;
+      if (key === "a") this.keyA = Math.min(this.def.keyHeatCap, this.keyA + amount);
+      else this.keyB = Math.min(this.def.keyHeatCap, this.keyB + amount);
+      this.manualHeat = this.keyA + this.keyB;
+    } else {
+      this.manualHeat = Math.min(100, this.manualHeat + amount);
+    }
   }
 
   private handleTap(x: number, y: number): void {
     if (this.done) return;
-    if (!this.isNearFire(x, y)) return;
+    const src = this.sourceAt(x, y);
+    if (src === null) return;
     this.field.injectHeat(x, y, this.def.sim.tapHeat * this.fireIntensity, 3.5);
-    this.manualHeat = Math.min(100, this.manualHeat + 2);
+    this.addHeat(2, src);
     this.spawnBurst();
     this.hints.notifyTap();
     if (this.firePutOut) {
@@ -393,12 +465,14 @@ export class LevelScene extends Phaser.Scene {
   private handleDragStart(x: number, y: number): void {
     if (this.done) return;
     this.extinguishedThisDrag = false;
-    if (this.isNearFire(x, y)) {
+    const src = this.sourceAt(x, y);
+    if (src !== null) {
       this.field.injectHeat(x, y, this.def.sim.tapHeat * this.fireIntensity, 3.5);
-      this.manualHeat = Math.min(100, this.manualHeat + 2);
+      this.addHeat(2, src);
       this.spawnBurst();
       this.hints.notifyTap();
     }
+    this.dragKey = src; // key-cap levels credit the source the drag CARRIES
     this.dragPoints = [{ x, y, t: this.time.now }];
     if (this.cameraFollow) this.cameraTargetX = x;
   }
@@ -417,13 +491,18 @@ export class LevelScene extends Phaser.Scene {
     }
 
     const distFromFire = Phaser.Math.Distance.Between(x, y, this.def.fire.x, this.def.fire.y);
+    const distFromSecond = this.def.fireSecondary
+      ? Phaser.Math.Distance.Between(x, y, this.def.fireSecondary.x, this.def.fireSecondary.y)
+      : Infinity;
     if (distFromFire < this.def.fire.tapRadius) {
+      this.field.injectHeat(x, y, this.def.sim.dragHeat * this.fireIntensity * 0.5, 3);
+    } else if (this.def.fireSecondary && distFromSecond < this.def.fireSecondary.tapRadius) {
       this.field.injectHeat(x, y, this.def.sim.dragHeat * this.fireIntensity * 0.5, 3);
     } else {
       this.field.injectHeat(x, y, this.def.sim.dragHeat * this.fireIntensity, 3.5);
       const distToCreature = Phaser.Math.Distance.Between(x, y, this.def.creature.x, this.def.creature.y);
       if (distToCreature < 320) {
-        this.manualHeat = Math.min(100, this.manualHeat + 0.45 * this.fireIntensity);
+        this.addHeat(0.45 * this.fireIntensity, this.dragKey);
       }
     }
 
@@ -512,6 +591,8 @@ export class LevelScene extends Phaser.Scene {
    */
   private extinguishFire(x: number, y: number): void {
     this.manualHeat = 0;
+    this.keyA = 0;
+    this.keyB = 0;
     this.timeInTarget = 0;
     this.inTarget = false;
     this.fireIntensity = 0.3;
@@ -596,7 +677,7 @@ export class LevelScene extends Phaser.Scene {
       },
     });
 
-    if (this.def.id === "mast_cell") {
+    if (this.def.win.cutscene === "sneeze") {
       // Cutscene first, THEN the result panel. The cutscene is destroyed in
       // onDone (before the WinOverlay exists) so the 900 ms animation plays in
       // full and the panel then appears unobstructed; the PANEL_* depths in

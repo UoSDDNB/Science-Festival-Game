@@ -26,12 +26,16 @@ export interface WinConfig {
   maxHeat: number;
   dangerHeat: number;
   sustainSeconds: number;
+  /** Optional in-scene animation that plays BEFORE the win panel. Currently
+   *  only "sneeze" (mast-cell degranulation burst). Data-driven so any
+   *  degranulation-themed level (mast_cell, two_keys) can use it. */
+  cutscene?: "sneeze";
   title: string;
   body: string;
   biologyLine: string;
 }
 
-export type CreatureKind = "scrat" | "dragon" | "sprite" | "mast_cell";
+export type CreatureKind = "scrat" | "dragon" | "sprite" | "mast_cell" | "neutrophil";
 export type BackgroundKind = "ice_age" | "norse" | "enchanted" | "tissue" | "nasal_journey";
 export type FireKind = "campfire" | "pollen";
 
@@ -55,6 +59,18 @@ export interface LevelDef {
   /** If present, the camera tracks the player's finger with smooth lerping (defaults to true when worldWidth > 1920). */
   cameraFollow?: boolean;
   fire: { x: number; y: number; tapRadius: number; kind?: FireKind };
+  /** Optional SECOND heat source (e.g. a second pollen grain). Both sources
+   *  feed the SAME `manualHeat` total, but when `keyHeatCaps` is set each
+   *  source's contribution is capped — the AND-gate requirement (idea 4 "Two
+   *  Keys": the mast cell only degranulates when IgE is CROSSED, i.e. two
+   *  allergens bind at once). Without caps the behaviour is a plain
+   *  dual-source level. */
+  fireSecondary?: { x: number; y: number; tapRadius: number; kind?: FireKind };
+  /** Optional per-source cap on `manualHeat` contribution (e.g. 45 each → a
+   *  single source can never reach a 50-70 band alone; BOTH sources are
+   *  required — the "Two Keys" AND-gate, ideas 4/11). When absent (or with a
+   *  single source) behaviour is the legacy uncapped single total. */
+  keyHeatCap?: number;
   creature: { x: number; y: number; kind: CreatureKind; size: number; encased?: boolean };
   obstacle?: { x: number; y: number; radius: number; kind?: "boulder" | "fibre" };
   /** Multiple obstacles (e.g. a boulder wall the fire must route around). When

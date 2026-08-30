@@ -212,6 +212,61 @@ function drawMastCell(
 }
 
 /**
+ * Two Keys — two spiky pollen grains (top-left + bottom-left) with a dashed
+ * "link" between them, pointing at a granule mast cell (right). The dashed
+ * line reads as "both must cross" — the bivalency requirement at a glance.
+ */
+function drawTwoKeys(
+  g: Phaser.GameObjects.Graphics,
+  x: number, y: number, w: number, h: number,
+  pal: LevelDef["palette"], rTop: number, rBottom: number,
+): void {
+  fillBox(g, x, y, w, h, pal.bgTop, pal.bgBottom, rTop, rBottom);
+  const m = Math.min(w, h);
+  // Pollen grain motif (disc + radial spikes)
+  const pollen = (px: number, py: number, r: number): void => {
+    g.lineStyle(Math.max(1, r * 0.28), hexToInt(pal.fireHot), 0.95);
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      g.lineBetween(px + Math.cos(a) * r, py + Math.sin(a) * r, px + Math.cos(a) * r * 1.8, py + Math.sin(a) * r * 1.8);
+    }
+    g.fillStyle(hexToInt(pal.fire), 0.95);
+    g.fillCircle(px, py, r);
+  };
+  const ax = x + w * 0.16, ay = y + h * 0.26;
+  const bx = x + w * 0.16, by = y + h * 0.74;
+  pollen(ax, ay, m * 0.085);
+  pollen(bx, by, m * 0.085);
+  // Dashed crosslink between the two grains
+  g.lineStyle(Math.max(1.5, m * 0.02), hexToInt(pal.accent), 0.8);
+  const segs = 5;
+  for (let i = 0; i < segs; i += 2) {
+    const t0 = i / segs, t1 = (i + 1) / segs;
+    g.lineBetween(ax + (bx - ax) * t0, ay + (by - ay) * t0, ax + (bx - ax) * t1, ay + (by - ay) * t1);
+  }
+  // Mast cell (right): blob + granules + nucleus
+  const cx = x + w * 0.72, cy = y + h * 0.5;
+  const cs = m * 0.17;
+  g.fillStyle(hexToInt(pal.creature), 0.95);
+  g.fillCircle(cx, cy, cs);
+  g.lineStyle(Math.max(1.5, cs * 0.09), hexToInt(pal.creatureAccent), 0.9);
+  g.strokeCircle(cx, cy, cs);
+  g.fillStyle(hexToInt(pal.creatureAccent), 0.9);
+  const grains: Array<[number, number]> = [
+    [0.45, 2.2], [0.3, 4.4], [0.5, 0.6], [0.25, 3.5], [0.45, 5.2],
+  ];
+  for (const [rr, a] of grains) {
+    g.fillCircle(cx + Math.cos(a) * cs * rr, cy + Math.sin(a) * cs * rr, Math.max(1, cs * 0.13));
+  }
+  g.fillStyle(hexToInt(pal.accent), 0.85);
+  g.fillEllipse(cx, cy, cs * 0.62, cs * 0.45);
+  // Little arrows from each grain to the cell
+  g.lineStyle(Math.max(1, m * 0.014), hexToInt(pal.fireHot), 0.5);
+  g.lineBetween(ax + m * 0.1, ay, cx - cs - m * 0.06, cy - m * 0.08);
+  g.lineBetween(bx + m * 0.1, by, cx - cs - m * 0.06, cy + m * 0.08);
+}
+
+/**
  * Draw the semantic preview for `lvl` into a w×h box whose TOP-LEFT is (x, y).
  * `rTop`/`rBottom` are the corner radii of the enclosing card (top corners
  * rounded for the desktop band; all four for the 36 px phone icon). Shapes
@@ -232,6 +287,9 @@ export function drawCardMotif(
       break;
     case "mast_cell":
       drawMastCell(g, x, y, w, h, lvl.palette, rTop, rBottom);
+      break;
+    case "two_keys":
+      drawTwoKeys(g, x, y, w, h, lvl.palette, rTop, rBottom);
       break;
     default:
       fillBox(g, x, y, w, h, lvl.palette.bgTop, lvl.palette.bgBottom, rTop, rBottom);
