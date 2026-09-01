@@ -237,7 +237,8 @@ export class LevelSelectScene extends Phaser.Scene {
     if (this.uiRoot) this.uiRoot.destroy(true);
     const w = this.scale.width;
     const h = this.scale.height;
-    this.layout = computeLayout(w, h, LEVELS.length);
+    // 4 narrative levels + 1 arcade card (ARCADE-DESIGN-PARTY D-1, Option B)
+    this.layout = computeLayout(w, h, LEVELS.length + 1);
 
     this.uiRoot = this.add.container(0, 0);
 
@@ -269,7 +270,18 @@ export class LevelSelectScene extends Phaser.Scene {
 
     // Phone + overflow-stack modes: cards go into a ScrollPanel
     const scrollMode = this.layout.mode === "phone-scroll" || (this.layout.mode === "desktop-stack" && this.layout.contentHeight > this.layout.scrollAreaHeight);
-    const host = scrollMode ? this.createScrollParent(this.layout) : this.uiRoot;
+    // Explicit type: without it TS infers `never` for host in the else branch
+    // (it can't see that createScrollParent() sets this.scrollPanel).
+    // Capture the panel in a local — `this.scrollPanel` is narrowed to null
+    // by the reset at the top of this method, and method calls don't always
+    // reset the narrowing the way the closure below relies on.
+    const host: Phaser.GameObjects.Container = scrollMode ? this.createScrollParent(this.layout) : (this.uiRoot as Phaser.GameObjects.Container);
+    // Cast (not annotation): an annotated const still inherits the
+    // initializer's narrowing (null), which would collapse the truthiness
+    // check to `never`. The assertion resets it to the declared type.
+    // (The LEVELS.forEach closure above is unaffected — closures read the
+    // declared type.)
+    const panel = this.scrollPanel as ScrollPanel | null;
     const wholeCardClickable = !scrollMode;
 
     LEVELS.forEach((lvl, i) => {
@@ -279,12 +291,23 @@ export class LevelSelectScene extends Phaser.Scene {
       // stay centred on w/2 on screen.
       const cardX = scrollMode ? pos.x - 12 : pos.x;
       const card = this.makeCard(cardX, pos.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, lvl, wholeCardClickable);
-      if (scrollMode && this.scrollPanel) {
-        this.scrollPanel.add(card, this.layout!.cardHeight);
+      if (scrollMode && panel) {
+        panel.add(card, this.layout!.cardHeight);
       } else {
         host.add(card);
       }
     });
+
+    // The Arcade card — last position, visually distinct (gold frame,
+    // marquee band, "A1" chip). Opens the arcade-select submenu (D-1).
+    const ap = this.layout!.positions[LEVELS.length]!;
+    const arcX = scrollMode ? ap.x - 12 : ap.x;
+    const arcCard = this.makeArcadeCard(arcX, ap.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, wholeCardClickable);
+    if (scrollMode && panel) {
+      panel.add(arcCard, this.layout!.cardHeight);
+    } else {
+      host.add(arcCard);
+    }
   }
 
   /** Subtle translucent deep-blue scroll backdrop (approved deviation from
@@ -373,6 +396,96 @@ export class LevelSelectScene extends Phaser.Scene {
       card.add(locked);
     }
     return card;
+  }
+
+  /** The Arcade card (D-1/OQ-2 default): gold frame, marquee band with bulb
+   *  dots + "GAME" text, "A1" chip instead of an order number. Marquee art is
+   *  in-scene graphics (R7: cardPreview.ts stays level-only). */
+  private makeArcadeCard(
+    cx: number, cy: number, w: number, h: number,
+    compact: boolean, wholeCardClickable: boolean,
+  ): Phaser.GameObjects.Container {
+    const m = cardMetrics(w, h, this.scale.width, compact);
+    const card = this.add.container(cx, cy);
+    const r = compact ? 12 : 16;
+
+    const g = this.add.graphics();
+    g.fillStyle(0x111a2a, 0.9);
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
+    g.lineStyle(3, 0xffd060, 0.9);
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
+    card.add(g);
+
+    // Marquee band (or compact icon) — drawMarquee returns the optional
+    // label Text, which the card reparents into its local space.
+    if (compact) {
+      const icon = this.add.graphics();
+      const lbl = this.drawMarquee(icon, -w / 2 + 14, -h / 2 + 10, 36, 36);
+      card.add(icon);
+      if (lbl) card.add(lbl);
+    } else {
+      const band = this.add.graphics();
+      const lbl = this.drawMarquee(band, -w / 2, -h / 2, w, 56);
+      card.add(band);
+      if (lbl) card.add(lbl);
+    }
+
+    // "A1" chip (distinct from the "0N" order chips)
+    const chip = this.add.graphics();
+    chip.fillStyle(0x0a0f1a, 0.72);
+    chip.fillRoundedRect(w / 2 - 14 - 40, -h / 2 + 8, 40, 22, 6);
+    card.add(chip);
+    const order = this.add
+      .text(w / 2 - 14 - 20, -h / 2 + 19, "A1", { fontFamily: "ui-monospace, monospace", fontSize: `${m.orderSize}px`, color: "#ffd86a" })
+      .setOrigin(0.5);
+    card.add(order);
+
+    const nameSize = Math.max(16, m.nameSize);
+    const nameY = compact ? -h / 2 + 52 : -h / 2 + 56 + 14;
+    const name = this.add
+      .text(0, nameY, "The Arcade", { fontFamily: "ui-sans-serif, system-ui", fontSize: `${nameSize}px`, color: "#ffd86a", fontStyle: "bold", align: "center", wordWrap: { width: w - 28 } })
+      .setOrigin(0.5, 0);
+    card.add(name);
+
+    if (m.showBlurb) {
+      const blurb = this.add
+        .text(0, nameY + nameSize + 8, "classic arcade loops — catch, tap, match, chase", { fontFamily: "ui-sans-serif, system-ui", fontSize: `${m.blurbSize}px`, color: "#8fb6ff", fontStyle: "italic", align: "center", wordWrap: { width: w - 36 } })
+        .setOrigin(0.5, 0);
+      card.add(blurb);
+    }
+
+    const play = this.makePlayButton(0, m.playY, "PLAY", m.buttonWidth, m.buttonHeight, () => this.scene.start("arcade-select"));
+    card.add(play);
+    if (wholeCardClickable) {
+      const hit = this.add
+        .rectangle(0, 0, w, h, 0xffffff, 0.001)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", () => this.scene.start("arcade-select"));
+      card.addAt(hit, 0);
+    }
+    return card;
+  }
+
+  /** Marquee art: dark band, gold "A R C A D E" label, a row of bulb dots.
+   *  Returns the label Text (or null for small compact icons) — the caller
+   *  adds it to the card so it inherits the card's local coordinates. */
+  private drawMarquee(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number): Phaser.GameObjects.Text | null {
+    g.fillStyle(0x1a1208, 1);
+    g.fillRect(x, y, w, h);
+    // bulbs along the bottom edge
+    const n = Math.max(4, Math.floor(w / 22));
+    for (let i = 0; i < n; i++) {
+      const bx = x + (w / n) * (i + 0.5);
+      g.fillStyle(i % 2 === 0 ? 0xffd86a : 0xff8a3c, 0.95);
+      g.fillCircle(bx, y + h - 7, 3);
+    }
+    if (w >= 80 && h >= 30) {
+      g.fillStyle(0xffd86a, 1);
+      g.fillRect(x, y, w, 3);
+      const label = this.add.text(x + w / 2, y + h / 2 - 2, "A R C A D E", { fontFamily: "ui-monospace, monospace", fontSize: "16px", color: "#ffd86a", fontStyle: "bold" }).setOrigin(0.5);
+      return label;
+    }
+    return null;
   }
 
   private makePlayButton(

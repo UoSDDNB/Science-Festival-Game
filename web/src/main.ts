@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
 import { LevelSelectScene } from "./scenes/LevelSelectScene";
 import { LevelScene } from "./scenes/LevelScene";
+import { ArcadeSelectScene } from "./arcade/ArcadeSelectScene";
+import { GAME_SCENES } from "./arcade/registry";
 import { WORLD_WIDTH, WORLD_HEIGHT } from "./types";
 
 /**
@@ -29,7 +31,7 @@ const config: Phaser.Types.Core.GameConfig = {
     roundPixels: false,
   },
   fps: { target: 60, forceSetTimeOut: false },
-  scene: [BootScene, LevelSelectScene, LevelScene],
+  scene: [BootScene, LevelSelectScene, LevelScene, ArcadeSelectScene, ...GAME_SCENES],
 };
 
 const game = new Phaser.Game(config);
