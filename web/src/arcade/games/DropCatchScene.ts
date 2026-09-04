@@ -47,7 +47,9 @@ export class DropCatchScene extends Phaser.Scene {
   private targetX = 0;
   private spawnTimer: Phaser.Time.TimerEvent | null = null;
   private readyOverlay: Phaser.GameObjects.Container | null = null;
+  private readyVeil: Phaser.GameObjects.Rectangle | null = null;
   private overOverlay: Phaser.GameObjects.Container | null = null;
+  private overVeil: Phaser.GameObjects.Rectangle | null = null;
   private keyL = false;
   private keyR = false;
   private dragging = false;
@@ -80,6 +82,8 @@ export class DropCatchScene extends Phaser.Scene {
     this.state = "running";
     this.readyOverlay?.destroy(true);
     this.readyOverlay = null;
+    this.readyVeil?.destroy(true);
+    this.readyVeil = null;
     this.scheduleSpawn();
   }
 
@@ -96,6 +100,12 @@ export class DropCatchScene extends Phaser.Scene {
     this.state = "ready";
     this.overOverlay?.destroy(true);
     this.overOverlay = null;
+    this.overVeil?.destroy(true);
+    this.overVeil = null;
+    this.readyOverlay?.destroy(true);
+    this.readyOverlay = null;
+    this.readyVeil?.destroy(true);
+    this.readyVeil = null;
     this.targetX = this.scale.width / 2;
     this.buildHud();
     this.buildReadyOverlay();
@@ -110,9 +120,15 @@ export class DropCatchScene extends Phaser.Scene {
       const hue = GOOD_HUES[Phaser.Math.Between(0, GOOD_HUES.length - 1)]!;
       body = this.add.circle(cx, this.col.top - r, r, hue).setStrokeStyle(3, 0xffffff, 0.5).setDepth(5);
     } else {
-      // spiky star — shape (not colour) encodes "bad" (June rule)
+      // spiky star — shape (not colour) encodes "bad" (June rule).
+      // Position the Graphics at the star centre and draw in LOCAL coords:
+      // with the default (0,0) origin, drawing at absolute coords pinned
+      // body.x to 0 for every bad object, so the catch test
+      // |body.x − bucket.x| could never fire (Spike Bug —
+      // DROPCATCH-SPIKE-DIAGNOSIS.md, 2026-09-01).
       const g = this.add.graphics().setDepth(5);
-      this.drawStar(g, cx, this.col.top - r, r);
+      g.setPosition(cx, this.col.top - r);
+      this.drawStar(g, 0, 0, r);
       body = g;
     }
     const obj: DropObject = { kind, body, r, vy: vy ?? this.currentSpeed(), dead: false };
@@ -222,7 +238,7 @@ export class DropCatchScene extends Phaser.Scene {
     this.spawnTimer = null;
     const w = this.scale.width;
     const h = this.scale.height;
-    this.add.rectangle(w / 2, h / 2, w, h, 0x05080f, 0.72).setDepth(99);
+    this.overVeil = this.add.rectangle(w / 2, h / 2, w, h, 0x05080f, 0.72).setDepth(99);
     this.overOverlay = this.add.container(w / 2, h / 2).setDepth(100);
     const card = this.add.graphics();
     const cw = Math.min(520, w - 60);
@@ -311,6 +327,7 @@ export class DropCatchScene extends Phaser.Scene {
   }
 
   private buildHud(): void {
+    this.hud?.destroy(true); // resetRound rebuilds the HUD — never stack two
     this.hud = this.add.container(0, 0).setDepth(30);
     const c = this.col;
     const score = this.add.text(c.x, 64, "score 0", { fontFamily: "ui-monospace, monospace", fontSize: "26px", color: "#ffd86a", fontStyle: "bold" }).setOrigin(0, 0.5);
@@ -339,7 +356,7 @@ export class DropCatchScene extends Phaser.Scene {
   private buildReadyOverlay(): void {
     const w = this.scale.width;
     const h = this.scale.height;
-    this.add.rectangle(w / 2, h / 2, w, h, 0x05080f, 0.6).setDepth(49);
+    this.readyVeil = this.add.rectangle(w / 2, h / 2, w, h, 0x05080f, 0.6).setDepth(49);
     this.readyOverlay = this.add.container(w / 2, h / 2).setDepth(50);
     const lines: Array<[string, number, string]> = [
       ["DROP CATCH", 40, "#ffd86a"],
@@ -398,12 +415,16 @@ export class DropCatchScene extends Phaser.Scene {
 
   private drawStar(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number): void {
     g.fillStyle(BAD_COLOR, 1);
-    const pts: Array<[number, number]> = [];
+    // fillPoints/strokePoints require Phaser.Geom.Point objects in 3.90 —
+    // plain [x, y] tuples produce NaN vertices and the star SILENTLY renders
+    // nothing (second half of the Spike Bug, proven by probe-star-format.mjs:
+    // tuple stars invisible, Point stars crisp).
+    const pts: Phaser.Geom.Point[] = [];
     const spikes = 7;
     for (let i = 0; i < spikes * 2; i++) {
       const rad = i % 2 === 0 ? r : r * 0.55;
       const a = (Math.PI * i) / spikes - Math.PI / 2;
-      pts.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]);
+      pts.push(new Phaser.Geom.Point(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad));
     }
     g.fillPoints(pts, true);
     g.lineStyle(2, 0x7f1d1d, 0.9);
