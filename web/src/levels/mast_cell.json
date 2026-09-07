@@ -1,0 +1,56 @@
+{
+  "id": "mast_cell",
+  "name": "The Allergy Cell",
+  "order": 3,
+  "unlocked": true,
+  "background": "nasal_journey",
+  "worldWidth": 3840,
+  "cameraFollow": true,
+  "shakeWithHeat": true,
+  "palette": {
+    "bgTop": "#7ec3ee",
+    "bgBottom": "#cfeeff",
+    "ground": "#4a7a3a",
+    "groundAccent": "#82c062",
+    "fire": "#ffe060",
+    "fireHot": "#fff5b8",
+    "obstacle": "#c89aa0",
+    "creature": "#ffb3c1",
+    "creatureAccent": "#7a1f2b",
+    "accent": "#ff6a8a"
+  },
+  "fire": { "x": 380, "y": 720, "tapRadius": 220, "kind": "pollen" },
+  "creature": { "x": 3050, "y": 560, "kind": "mast_cell", "size": 1.5 },
+  "sim": {
+    "diffusion": 0.07,
+    "dissipation": 0.012,
+    "sourceHeat": 11,
+    "targetRadius": 2,
+    "tapHeat": 18,
+    "dragHeat": 14,
+    "decayPerSec": 6
+  },
+  "win": {
+    "minHeat": 50,
+    "maxHeat": 70,
+    "dangerHeat": 85,
+    "sustainSeconds": 3.5,
+    "cutscene": "sneeze",
+    "title": "AAACHOO!",
+    "body": "Just enough histamine. The mast cell tipped past threshold, calcium poured in, granules emptied into the tissue — and the body fired off a sneeze to expel the invader.",
+    "biologyLine": "That's an allergic reaction. Mast cells coated in IgE dump histamine when allergens crosslink them. The sneeze is your body throwing them back out."
+  },
+  "fail": {
+    "triggerSeconds": 1.8,
+    "title": "ANAPHYLAXIS",
+    "body": "Too much. Mast cells flooded the tissue with histamine, blood vessels dilated, airways swelled, blood pressure crashed.",
+    "biologyLine": "Severe allergic reaction — life-threatening within minutes. This is why people with serious allergies carry adrenaline auto-injectors."
+  },
+  "hints": {
+    "drag": "Drag the pollen up — all the way up the nose",
+    "tap": "Tap the pollen",
+    "hold": "Swirl around the pollen to release more",
+    "pinch": "Spread two fingers (or press +) to release more"
+  },
+  "meterLabel": "Activation"
+}

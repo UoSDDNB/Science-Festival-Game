@@ -22,3 +22,6 @@ build/
 # BMAD planning artifacts
 _bmad/
 _bmad-output/
+
+# Node (Phaser web)
+web/node_modules/

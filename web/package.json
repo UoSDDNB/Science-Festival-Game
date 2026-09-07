@@ -1,0 +1,19 @@
+{
+  "name": "playtime-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Playtime — an educational biology minigame about signalling cascades. Phaser 3 + TypeScript.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}

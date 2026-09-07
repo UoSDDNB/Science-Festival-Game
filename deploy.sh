@@ -1,23 +1,21 @@
-#!/bin/bash
-# Deploy Playtime to Hetzner VPS
+#!/usr/bin/env bash
+# Deploy Playtime to Hetzner VPS.
 # Usage:
-#   ./deploy.sh              # Godot web export from this repo (default)
-#   PLAYTIME_TARGET=phaser ./deploy.sh   # Phaser rewrite via jump host (production stack)
+#   ./deploy.sh                         # Phaser (default) — build web/ and upload
+#   PLAYTIME_TARGET=godot ./deploy.sh   # Optional Godot prototype export
 #
-# Requires SSH access to juri@51.77.146.49 (jump host), which can reach root@204.168.183.57.
+# SSH: prefers direct root@204.168.183.57; falls back to jump host juri@51.77.146.49.
 
-set -e
+set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="build"
-REMOTE="root@204.168.183.57"
+REMOTE="${PLAYTIME_REMOTE:-root@204.168.183.57}"
 JUMP_HOST="${PLAYTIME_JUMP_HOST:-juri@51.77.146.49}"
-REMOTE_DIR="/var/www/playtime"
+REMOTE_DIR="${PLAYTIME_REMOTE_DIR:-/var/www/playtime}"
 LIVE_URL="https://playtime.204.168.183.57.sslip.io"
-VERSION=$(date +%Y%m%d%H%M%S)
+VERSION="$(date -u +%Y%m%d%H%M%S)"
 STAGING_DIR="playtime-deploy-${VERSION}"
-DEPLOY_TARGET="${PLAYTIME_TARGET:-godot}"
-PHASER_PROJECT="${PLAYTIME_PHASER_DIR:-${JUMP_HOST}:Projects/AI_for_Biology_Game/web}"
+DEPLOY_TARGET="${PLAYTIME_TARGET:-phaser}"
 
 DEPLOY_MODE=""
 if ssh -o BatchMode=yes -o ConnectTimeout=5 "${REMOTE}" "echo ok" >/dev/null 2>&1; then
@@ -27,40 +25,56 @@ elif ssh -o BatchMode=yes -o ConnectTimeout=5 "${JUMP_HOST}" "echo ok" >/dev/nul
 else
 	echo "ERROR: Cannot SSH to ${REMOTE} or jump host ${JUMP_HOST}."
 	echo ""
-	echo "Ask whoever manages the VPS to add your public key to ${JUMP_HOST}:"
+	echo "Add your public key to the VPS or jump host:"
 	echo "  cat ~/.ssh/id_ed25519.pub"
 	echo ""
-	echo "Or test a local build only: ./scripts/build.sh"
+	echo "Or build locally only:"
+	echo "  cd web && npm install && npm run build"
 	exit 1
 fi
 
-deploy_via_jump() {
-	local source_path="$1"
-	local use_delete="${2:-false}"
-
-	ssh "${JUMP_HOST}" "mkdir -p ~/${STAGING_DIR}"
-	if [[ "${use_delete}" == "true" ]]; then
-		scp -q -r "${source_path}" "${JUMP_HOST}:~/${STAGING_DIR}/dist/"
-		ssh "${JUMP_HOST}" "rsync -az --delete ~/${STAGING_DIR}/dist/ ${REMOTE}:${REMOTE_DIR}/ && echo '${VERSION}' | ssh ${REMOTE} 'cat > ${REMOTE_DIR}/version.txt' && rm -rf ~/${STAGING_DIR}"
+upload_dist() {
+	local dist_path="$1"
+	if [[ "${DEPLOY_MODE}" == "direct" ]]; then
+		rsync -az --delete "${dist_path}/" "${REMOTE}:${REMOTE_DIR}/"
+		ssh "${REMOTE}" "echo '${VERSION}' > ${REMOTE_DIR}/version.txt"
 	else
-		scp -q "${source_path}"/* "${JUMP_HOST}:~/${STAGING_DIR}/"
-		ssh "${JUMP_HOST}" "rsync -az --delete ~/${STAGING_DIR}/ ${REMOTE}:${REMOTE_DIR}/ && echo '${VERSION}' | ssh ${REMOTE} 'cat > ${REMOTE_DIR}/version.txt' && rm -rf ~/${STAGING_DIR}"
+		ssh "${JUMP_HOST}" "mkdir -p ~/${STAGING_DIR}"
+		rsync -az --delete "${dist_path}/" "${JUMP_HOST}:~/${STAGING_DIR}/"
+		ssh "${JUMP_HOST}" "rsync -az --delete ~/${STAGING_DIR}/ ${REMOTE}:${REMOTE_DIR}/ && ssh ${REMOTE} \"echo '${VERSION}' > ${REMOTE_DIR}/version.txt\" && rm -rf ~/${STAGING_DIR}"
 	fi
 }
 
 if [[ "${DEPLOY_TARGET}" == "phaser" ]]; then
-	echo "=== Deploying Phaser production build via ${DEPLOY_MODE} (v${VERSION}) ==="
-	if [[ "${DEPLOY_MODE}" == "direct" ]]; then
-		ssh "${JUMP_HOST}" "cd ~/Projects/AI_for_Biology_Game/web && rsync -az --delete dist/ ${REMOTE}:${REMOTE_DIR}/"
-		ssh "${REMOTE}" "echo '${VERSION}' > ${REMOTE_DIR}/version.txt"
-	else
-		ssh "${JUMP_HOST}" "cd ~/Projects/AI_for_Biology_Game/web && rsync -az --delete dist/ ${REMOTE}:${REMOTE_DIR}/ && ssh ${REMOTE} \"echo '${VERSION}' > ${REMOTE_DIR}/version.txt\""
+	WEB_DIR="${PROJECT_DIR}/web"
+	if [[ ! -f "${WEB_DIR}/package.json" ]]; then
+		echo "ERROR: ${WEB_DIR}/package.json missing. Phaser sources should live under web/."
+		exit 1
 	fi
+	if ! command -v npm >/dev/null 2>&1; then
+		echo "ERROR: npm is required to build the Phaser web game."
+		exit 1
+	fi
+
+	echo "=== Building Phaser web/ (v${VERSION}) ==="
+	cd "${WEB_DIR}"
+	npm install --no-audit --no-fund
+	npm run build
+
+	echo "=== Deploying Phaser dist via ${DEPLOY_MODE} ==="
+	upload_dist "${WEB_DIR}/dist"
 	echo "=== Done! Game live at ${LIVE_URL}/?v=${VERSION} ==="
 	exit 0
 fi
 
+if [[ "${DEPLOY_TARGET}" != "godot" ]]; then
+	echo "ERROR: Unknown PLAYTIME_TARGET='${DEPLOY_TARGET}'. Use phaser (default) or godot."
+	exit 1
+fi
+
 GODOT="${HOME}/.local/share/godot/Godot_v4.5.2-stable_linux.x86_64"
+BUILD_DIR="${PROJECT_DIR}/build"
+
 if [[ ! -x "${GODOT}" ]]; then
 	echo "Godot not found. Run: ${PROJECT_DIR}/scripts/setup_godot.sh"
 	exit 1
@@ -71,21 +85,15 @@ if [[ ! -f "${PROJECT_DIR}/export_presets.cfg" ]]; then
 	exit 1
 fi
 
-cd "${PROJECT_DIR}"
 mkdir -p "${BUILD_DIR}"
+cd "${PROJECT_DIR}"
 
-echo "=== Importing project ==="
+echo "=== Importing Godot project ==="
 "${GODOT}" --headless --path "${PROJECT_DIR}" --import 2>&1 | tail -3
 
-echo "=== Building web export ==="
+echo "=== Building Godot web export ==="
 "${GODOT}" --headless --path "${PROJECT_DIR}" --export-release "Web" "${BUILD_DIR}/index.html" 2>&1 | tail -3
 
 echo "=== Deploying Godot build via ${DEPLOY_MODE} (v${VERSION}) ==="
-if [[ "${DEPLOY_MODE}" == "direct" ]]; then
-	rsync -az --delete "${BUILD_DIR}/" "${REMOTE}:${REMOTE_DIR}/"
-	ssh "${REMOTE}" "echo '${VERSION}' > ${REMOTE_DIR}/version.txt"
-else
-	deploy_via_jump "${BUILD_DIR}" "false"
-fi
-
+upload_dist "${BUILD_DIR}"
 echo "=== Done! Game live at ${LIVE_URL}/?v=${VERSION} ==="
