@@ -7,7 +7,8 @@
 | Engine | Godot 4.5 (GL Compatibility / WebGL 2) |
 | Resolution | 1920 × 1080, landscape |
 | Export target | HTML5 / WebAssembly |
-| Live URL | https://playtime.204.168.183.57.sslip.io/ |
+| Live URL | [Open the game](https://playtime.204.168.183.57.sslip.io/) |
+| Production stack | Phaser 3 + TypeScript (`web/` on jump host) — 3 levels: Ice Age, Fire Meets Ice, The Allergy Cell |
 | Repository | `/home/cle1g21/Science-Festival-Game` |
 
 ---
@@ -19,7 +20,8 @@
 3. [Extended Level Breakdowns](#3-extended-level-breakdowns)
 4. [Function Directory](#4-function-directory)
 5. [Code Readability Rules](#5-code-readability-rules)
-6. [Development Workflow](#6-development-workflow)
+6. [Responsive Layout](#6-responsive-layout)
+7. [Development Workflow](#7-development-workflow)
 
 ---
 
@@ -51,7 +53,8 @@ Science-Festival-Game/
 │       ├── zone.gd               # Heat zone data class
 │       ├── channel.gd            # Inter-zone heat channel data class
 │       ├── heat_simulation.gd    # Diffusion engine (dissipation + flow)
-│       ├── win_detector.gd     # Win sustain and damage detection
+│       ├── win_detector.gd       # Win sustain and damage detection
+│       ├── responsive_layout.gd  # Viewport-relative UI sizing helpers
 │       ├── input_handler.gd      # Gesture state machine (unused, reserved)
 │       ├── thermometer.gd        # HUD thermometer widget
 │       ├── hint_system.gd        # Phased ghost-hand tutorial system
@@ -99,7 +102,7 @@ Science-Festival-Game/
 |--------|---------|
 | `scripts/setup_godot.sh` | Downloads Godot 4.5.2 binary and web export templates to `~/.local/share/godot/`. Creates `export_presets.cfg` |
 | `scripts/build.sh` | Runs headless Godot import + Web export to `build/` |
-| `deploy.sh` | Builds Web export, SCPs to VPS at `root@204.168.183.57:/var/www/playtime`, prints cache-busted live URL |
+| `deploy.sh` | Deploy to live VPS. Default: Godot export from this repo. Production: `PLAYTIME_TARGET=phaser ./deploy.sh` (3-level Phaser build via jump host `juri@51.77.146.49`) |
 
 ### Scene Files
 
@@ -311,6 +314,23 @@ Functions are listed alphabetically by file path. Classes marked **(unused)** ar
 | `set_heat(heat_value: float) -> void` | Stores heat driving heart visibility and beat speed |
 | `_process(delta_seconds: float) -> void` | Computes BPM-based beat scale multiplier |
 | `_draw() -> void` | Draws procedural beating heart shape with glow and danger flash |
+
+---
+
+### `scripts/core/responsive_layout.gd` — class `ResponsiveLayout` | extends `RefCounted`
+
+**Constants:** `DESIGN_HEIGHT` (1080.0), `DESIGN_WIDTH` (1920.0), `NARROW_WIDTH_THRESHOLD` (700.0)
+
+| Function | Description |
+|----------|-------------|
+| `get_viewport_size(from_node) -> Vector2` | Returns the live visible viewport size |
+| `content_width(viewport_size, width_fraction, maximum_design_pixels) -> float` | Caps panel width as a fraction of the viewport |
+| `horizontal_margin(viewport_size, margin_fraction) -> float` | Converts a width fraction into a pixel margin |
+| `vertical_margin(viewport_size, margin_fraction) -> float` | Converts a height fraction into a pixel margin |
+| `scale_font_size(viewport_size, design_font_size, minimum, maximum) -> int` | Scales fonts with viewport height and clamps |
+| `scale_dimension(viewport_size, design_pixels, minimum, maximum) -> float` | Scales a design-pixel size with viewport height |
+| `is_narrow_viewport(viewport_size) -> bool` | True when level-select cards should stack vertically |
+| `apply_centered_panel_offsets(control_node, half_width, half_height) -> void` | Applies symmetric center-panel offsets |
 
 ---
 
@@ -579,7 +599,37 @@ func add_heat(heat_amount: float) -> void:
 
 ---
 
-## 6. Development Workflow
+## 6. Responsive Layout
+
+The game canvas is authored at **1920×1080** and scaled by Godot’s `canvas_items` stretch mode. Control UI (menus, narrative, win overlay, hints) no longer uses fixed design pixels alone. Shared helpers in [`scripts/core/responsive_layout.gd`](scripts/core/responsive_layout.gd) convert viewport size into:
+
+- percentage-based margins and panel widths
+- font and control sizes scaled from viewport height (clamped to min/max)
+- a narrow-width mode (under 700px) that stacks level-select cards vertically
+
+Screens reconnect `get_viewport().size_changed` so rotating a phone or resizing a laptop browser re-applies layout.
+
+**No Conda packages or `environment.yml` are needed** for responsiveness. The stack remains Godot 4.5 / GDScript / Web export only.
+
+### How to test in a browser
+
+1. Build: `./scripts/build.sh` (then `./deploy.sh` if you have VPS SSH access).
+2. Open the game URL in Chrome or Edge.
+3. Open DevTools → Toggle device toolbar.
+4. Check these profiles:
+
+| Profile | What to verify |
+|---------|----------------|
+| iPhone SE / small phone | Start menu buttons visible; level cards stack; narrative text wraps; win card fits |
+| Large phone / tablet | Cards readable; no clipped titles or buttons |
+| Laptop ~1280px wide | Side-by-side level cards; margins look balanced |
+| Desktop ~1920px | Full design layout; fonts not oversized |
+
+Also rotate the device emulator (portrait ↔ landscape) and confirm UI recomputes without a full page reload.
+
+---
+
+## 7. Development Workflow
 
 ### Prerequisites (IridisX / headless Linux)
 
@@ -595,12 +645,16 @@ cd /home/cle1g21/Science-Festival-Game
 # Build web export locally
 ./scripts/build.sh
 
-# Build + deploy to live VPS (requires SSH key for root@204.168.183.57)
+# Deploy production (3-level Phaser game — Ice Age, Fire Meets Ice, Allergy Cell)
+PLAYTIME_TARGET=phaser ./deploy.sh
+
+# Deploy Godot prototype from this repo (development only)
 ./deploy.sh
 ```
 
-After deploy, open the printed URL (with `?v=` cache-buster) in your browser:
-`https://playtime.204.168.183.57.sslip.io/`
+After deploy, open the printed URL (with `?v=` cache-buster) in your browser, or play the current build here:
+
+**[Open the game](https://playtime.204.168.183.57.sslip.io/)**
 
 ### Implementation Notes vs Design Spec
 

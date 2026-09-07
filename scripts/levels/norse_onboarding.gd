@@ -483,6 +483,12 @@ func _show_win_screen() -> void:
 	win_layer.layer = 20
 	add_child(win_layer)
 
+	# Read the viewport so the card width fits phones and laptops.
+	var viewport_size := ResponsiveLayout.get_viewport_size(self)
+	var panel_width := ResponsiveLayout.content_width(viewport_size, 0.85, 560.0)
+	var panel_half_width := panel_width * 0.5
+	var panel_half_height := ResponsiveLayout.vertical_margin(viewport_size, 0.2)
+
 	var overlay_rect := ColorRect.new()
 	overlay_rect.color = Color(0, 0, 0, 0)
 	overlay_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -491,18 +497,22 @@ func _show_win_screen() -> void:
 
 	var win_card := VBoxContainer.new()
 	win_card.alignment = BoxContainer.ALIGNMENT_CENTER
-	win_card.add_theme_constant_override("separation", 16)
+	win_card.add_theme_constant_override(
+		"separation",
+		int(ResponsiveLayout.scale_dimension(viewport_size, 16.0, 10.0, 22.0))
+	)
 	win_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	win_card.offset_left = -280
-	win_card.offset_right = 280
-	win_card.offset_top = -140
-	win_card.offset_bottom = 140
+	# Apply viewport-relative panel offsets instead of fixed ±280 / ±140.
+	ResponsiveLayout.apply_centered_panel_offsets(win_card, panel_half_width, panel_half_height)
 	win_layer.add_child(win_card)
 
 	var title_label := Label.new()
 	title_label.text = "AWAKENED"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.add_theme_font_size_override("font_size", 32)
+	title_label.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 32.0, 20.0, 36.0)
+	)
 	title_label.add_theme_color_override("font_color", Color(1, 0.85, 0.5, 0.95))
 	win_card.add_child(title_label)
 
@@ -513,8 +523,12 @@ func _show_win_screen() -> void:
 	)
 	body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body_label.custom_minimum_size = Vector2(500, 0)
-	body_label.add_theme_font_size_override("font_size", 15)
+	# Body width tracks the panel so text wraps on narrow screens.
+	body_label.custom_minimum_size = Vector2(panel_width * 0.9, 0)
+	body_label.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 15.0, 12.0, 18.0)
+	)
 	body_label.add_theme_color_override("font_color", Color(0.75, 0.8, 0.9, 0.85))
 	win_card.add_child(body_label)
 
@@ -522,16 +536,19 @@ func _show_win_screen() -> void:
 
 	var button_row := HBoxContainer.new()
 	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	button_row.add_theme_constant_override("separation", 20)
+	button_row.add_theme_constant_override(
+		"separation",
+		int(ResponsiveLayout.scale_dimension(viewport_size, 20.0, 12.0, 28.0))
+	)
 	win_card.add_child(button_row)
 
-	var play_again_button := _make_win_button("Play Again")
+	var play_again_button := _make_win_button("Play Again", viewport_size)
 	play_again_button.pressed.connect(
 		func(): scene_requested.emit("res://scenes/levels/norse_onboarding.tscn")
 	)
 	button_row.add_child(play_again_button)
 
-	var menu_button := _make_win_button("Menu")
+	var menu_button := _make_win_button("Menu", viewport_size)
 	menu_button.pressed.connect(func(): scene_requested.emit(MENU_SCENE))
 	button_row.add_child(menu_button)
 
@@ -541,12 +558,18 @@ func _show_win_screen() -> void:
 	win_tween.tween_property(win_card, "modulate:a", 1.0, 0.5)
 
 
-func _make_win_button(button_text: String) -> Button:
-	# Create a styled button for the win screen actions.
+func _make_win_button(button_text: String, viewport_size: Vector2) -> Button:
+	# Create a styled button sized for the current viewport.
 	var button_node := Button.new()
 	button_node.text = button_text
-	button_node.custom_minimum_size = Vector2(130, 40)
-	button_node.add_theme_font_size_override("font_size", 16)
+	button_node.custom_minimum_size = Vector2(
+		ResponsiveLayout.scale_dimension(viewport_size, 130.0, 100.0, 160.0),
+		ResponsiveLayout.scale_dimension(viewport_size, 40.0, 34.0, 50.0)
+	)
+	button_node.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 16.0, 13.0, 20.0)
+	)
 	button_node.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
 	var normal_style_box := StyleBoxFlat.new()
 	normal_style_box.bg_color = Color(0.1, 0.08, 0.04, 0.5)

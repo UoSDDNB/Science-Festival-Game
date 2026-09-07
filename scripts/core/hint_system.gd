@@ -4,6 +4,7 @@ extends Control
 ## Phase-based ghost-hand tutorial system.
 ## Discovers what the player has not tried yet, shows warm-glowing hand animations.
 ## Each hint shown only once, auto-dismissed when the player performs the gesture.
+## Positions and label sizes use viewport fractions so hints fit narrow screens.
 
 signal hint_shown(hint_id: String)
 
@@ -32,7 +33,6 @@ func _ready() -> void:
 
 	# Create the large ghost-hand icon label.
 	_hand_icon_label = Label.new()
-	_hand_icon_label.add_theme_font_size_override("font_size", 44)
 	_hand_icon_label.add_theme_color_override("font_color", Color(1, 0.7, 0.3, 0.7))
 	_hand_icon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hand_icon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -40,11 +40,13 @@ func _ready() -> void:
 
 	# Create the smaller instruction text beneath the hand icon.
 	_hand_instruction_label = Label.new()
-	_hand_instruction_label.add_theme_font_size_override("font_size", 16)
 	_hand_instruction_label.add_theme_color_override("font_color", Color(1, 0.85, 0.6, 0.6))
 	_hand_instruction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hand_instruction_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint_container.add_child(_hand_instruction_label)
+
+	# Apply default font sizes for the current viewport.
+	_apply_default_hint_fonts()
 
 
 func update_max_heat(heat_value: float) -> void:
@@ -138,6 +140,19 @@ func show_encouragement(encouragement_text: String) -> void:
 		_hide_hint()
 
 
+func _apply_default_hint_fonts() -> void:
+	# Scale default hint fonts for the current viewport height.
+	var viewport_size := ResponsiveLayout.get_viewport_size(self)
+	_hand_icon_label.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 44.0, 28.0, 48.0)
+	)
+	_hand_instruction_label.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 16.0, 12.0, 20.0)
+	)
+
+
 func _show_ghost_hand(
 	hint_identifier: String,
 	icon_text: String,
@@ -150,22 +165,37 @@ func _show_ghost_hand(
 	_current_hint_identifier = hint_identifier
 	_hint_is_visible = true
 
-	# Position the hand icon using viewport-relative ratios.
-	var viewport_size := get_viewport_rect().size
+	# Position the hand icon using viewport-relative ratios and scaled sizes.
+	var viewport_size := ResponsiveLayout.get_viewport_size(self)
+	var icon_half_width := ResponsiveLayout.scale_dimension(viewport_size, 30.0, 20.0, 36.0)
+	var icon_half_height := ResponsiveLayout.scale_dimension(viewport_size, 30.0, 20.0, 36.0)
+	var instruction_half_width := ResponsiveLayout.scale_dimension(viewport_size, 80.0, 60.0, 100.0)
+	var instruction_width := ResponsiveLayout.scale_dimension(viewport_size, 160.0, 120.0, 220.0)
+	var instruction_height := ResponsiveLayout.scale_dimension(viewport_size, 25.0, 20.0, 32.0)
+	var instruction_vertical_offset := ResponsiveLayout.scale_dimension(viewport_size, 25.0, 18.0, 32.0)
+
 	_hand_icon_label.text = icon_text
-	_hand_icon_label.position = Vector2(
-		viewport_size.x * horizontal_ratio - 30,
-		viewport_size.y * vertical_ratio - 30
+	_hand_icon_label.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 44.0, 28.0, 48.0)
 	)
-	_hand_icon_label.size = Vector2(60, 50)
+	_hand_icon_label.position = Vector2(
+		viewport_size.x * horizontal_ratio - icon_half_width,
+		viewport_size.y * vertical_ratio - icon_half_height
+	)
+	_hand_icon_label.size = Vector2(icon_half_width * 2.0, icon_half_height * 1.67)
 
 	# Position the instruction text beneath the hand icon.
 	_hand_instruction_label.text = instruction_text
-	_hand_instruction_label.position = Vector2(
-		viewport_size.x * horizontal_ratio - 80,
-		viewport_size.y * vertical_ratio + 25
+	_hand_instruction_label.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 16.0, 12.0, 20.0)
 	)
-	_hand_instruction_label.size = Vector2(160, 25)
+	_hand_instruction_label.position = Vector2(
+		viewport_size.x * horizontal_ratio - instruction_half_width,
+		viewport_size.y * vertical_ratio + instruction_vertical_offset
+	)
+	_hand_instruction_label.size = Vector2(instruction_width, instruction_height)
 
 	# Fade the hint container into view.
 	_hint_container.visible = true
@@ -187,13 +217,19 @@ func _show_center_text(hint_identifier: String, message_text: String, text_color
 	_hint_is_visible = true
 
 	# Position a large centered message across the upper portion of the screen.
-	var viewport_size := get_viewport_rect().size
+	var viewport_size := ResponsiveLayout.get_viewport_size(self)
 	_hand_icon_label.text = ""
 	_hand_instruction_label.text = message_text
 	_hand_instruction_label.add_theme_color_override("font_color", text_color)
-	_hand_instruction_label.add_theme_font_size_override("font_size", 22)
-	_hand_instruction_label.position = Vector2(viewport_size.x * 0.2, viewport_size.y * 0.15)
-	_hand_instruction_label.size = Vector2(viewport_size.x * 0.6, 35)
+	_hand_instruction_label.add_theme_font_size_override(
+		"font_size",
+		ResponsiveLayout.scale_font_size(viewport_size, 22.0, 14.0, 26.0)
+	)
+	_hand_instruction_label.position = Vector2(viewport_size.x * 0.1, viewport_size.y * 0.15)
+	_hand_instruction_label.size = Vector2(
+		viewport_size.x * 0.8,
+		ResponsiveLayout.scale_dimension(viewport_size, 40.0, 30.0, 50.0)
+	)
 
 	# Fade the centered message into view.
 	_hint_container.visible = true
@@ -206,7 +242,7 @@ func _hide_hint() -> void:
 	_hint_is_visible = false
 	_current_hint_identifier = ""
 	# Restore the default instruction label styling.
-	_hand_instruction_label.add_theme_font_size_override("font_size", 16)
+	_apply_default_hint_fonts()
 	_hand_instruction_label.add_theme_color_override("font_color", Color(1, 0.85, 0.6, 0.6))
 	# Fade the hint container out and hide it when finished.
 	var fade_out_tween := create_tween()
