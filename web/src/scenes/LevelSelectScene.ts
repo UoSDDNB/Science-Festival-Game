@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { LEVELS } from "../levels";
 import { LevelDef } from "../types";
 import { hexToInt } from "../visuals/palette";
-import { drawCardMotif, lerpHex } from "../visuals/cardPreview";
+import { drawCardMotif, drawImmuneRescueMotif, lerpHex } from "../visuals/cardPreview";
 import { ScrollPanel } from "../ui/ScrollPanel";
 
 /**
@@ -237,8 +237,8 @@ export class LevelSelectScene extends Phaser.Scene {
     if (this.uiRoot) this.uiRoot.destroy(true);
     const w = this.scale.width;
     const h = this.scale.height;
-    // 4 narrative levels + 1 arcade card (ARCADE-DESIGN-PARTY D-1, Option B)
-    this.layout = computeLayout(w, h, LEVELS.length + 1);
+    // Narrative levels + Immune Rescue + Arcade
+    this.layout = computeLayout(w, h, LEVELS.length + 2);
 
     this.uiRoot = this.add.container(0, 0);
 
@@ -298,9 +298,26 @@ export class LevelSelectScene extends Phaser.Scene {
       }
     });
 
+    // Immune Rescue card — after narrative levels, before Arcade.
+    const ip = this.layout!.positions[LEVELS.length]!;
+    const irX = scrollMode ? ip.x - 12 : ip.x;
+    const irCard = this.makeImmuneRescueCard(
+      irX,
+      ip.y,
+      this.layout!.cardWidth,
+      this.layout!.cardHeight,
+      this.layout!.compact,
+      wholeCardClickable,
+    );
+    if (scrollMode && panel) {
+      panel.add(irCard, this.layout!.cardHeight);
+    } else {
+      host.add(irCard);
+    }
+
     // The Arcade card — last position, visually distinct (gold frame,
     // marquee band, "A1" chip). Opens the arcade-select submenu (D-1).
-    const ap = this.layout!.positions[LEVELS.length]!;
+    const ap = this.layout!.positions[LEVELS.length + 1]!;
     const arcX = scrollMode ? ap.x - 12 : ap.x;
     const arcCard = this.makeArcadeCard(arcX, ap.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, wholeCardClickable);
     if (scrollMode && panel) {
@@ -394,6 +411,93 @@ export class LevelSelectScene extends Phaser.Scene {
         .text(0, m.playY, "Coming Soon", { fontFamily: "ui-sans-serif, system-ui", fontSize: "14px", color: "#5a6a80" })
         .setOrigin(0.5);
       card.add(locked);
+    }
+    return card;
+  }
+
+  /** Immune Rescue home card — teal frame, tissue/neutrophil motif, opens mode select. */
+  private makeImmuneRescueCard(
+    cx: number, cy: number, w: number, h: number,
+    compact: boolean, wholeCardClickable: boolean,
+  ): Phaser.GameObjects.Container {
+    const m = cardMetrics(w, h, this.scale.width, compact);
+    const card = this.add.container(cx, cy);
+    const r = compact ? 12 : 16;
+    const tint = 0x4fd1c5;
+
+    const g = this.add.graphics();
+    g.fillStyle(0x111a2a, 0.9);
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
+    g.lineStyle(3, tint, 0.9);
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
+    card.add(g);
+
+    if (compact) {
+      const icon = this.add.graphics();
+      drawImmuneRescueMotif(icon, -w / 2 + 14, -h / 2 + 10, 36, 36, 8, 8);
+      card.add(icon);
+    } else {
+      const band = this.add.graphics();
+      drawImmuneRescueMotif(band, -w / 2, -h / 2, w, 56, r, 0);
+      card.add(band);
+    }
+
+    const chip = this.add.graphics();
+    chip.fillStyle(0x0a0f1a, 0.72);
+    chip.fillRoundedRect(w / 2 - 14 - 40, -h / 2 + 8, 40, 22, 6);
+    card.add(chip);
+    card.add(
+      this.add
+        .text(w / 2 - 14 - 20, -h / 2 + 19, "IR", {
+          fontFamily: "ui-monospace, monospace",
+          fontSize: `${m.orderSize}px`,
+          color: "#4fd1c5",
+        })
+        .setOrigin(0.5),
+    );
+
+    const nameSize = Math.max(16, m.nameSize);
+    const nameY = compact ? -h / 2 + 52 : -h / 2 + 56 + 14;
+    card.add(
+      this.add
+        .text(0, nameY, "Immune Rescue", {
+          fontFamily: "ui-sans-serif, system-ui",
+          fontSize: `${nameSize}px`,
+          color: "#4fd1c5",
+          fontStyle: "bold",
+          align: "center",
+          wordWrap: { width: w - 28 },
+        })
+        .setOrigin(0.5, 0),
+    );
+
+    if (m.showBlurb) {
+      card.add(
+        this.add
+          .text(0, nameY + nameSize + 8, "chemotaxis · phagocytosis · single or two-player", {
+            fontFamily: "ui-sans-serif, system-ui",
+            fontSize: `${m.blurbSize}px`,
+            color: "#8fb6ff",
+            fontStyle: "italic",
+            align: "center",
+            wordWrap: { width: w - 36 },
+          })
+          .setOrigin(0.5, 0),
+      );
+    }
+
+    const open = (): void => {
+      this.scene.start("immune-mode-select");
+    };
+    card.add(this.makePlayButton(0, m.playY, "PLAY", m.buttonWidth, m.buttonHeight, open));
+    if (wholeCardClickable) {
+      card.addAt(
+        this.add
+          .rectangle(0, 0, w, h, 0xffffff, 0.001)
+          .setInteractive({ useHandCursor: true })
+          .on("pointerdown", open),
+        0,
+      );
     }
     return card;
   }

@@ -4,13 +4,14 @@ import { LevelSelectScene } from "./scenes/LevelSelectScene";
 import { LevelScene } from "./scenes/LevelScene";
 import { ArcadeSelectScene } from "./arcade/ArcadeSelectScene";
 import { GAME_SCENES } from "./arcade/registry";
+import { ImmuneModeSelectScene } from "./immune_rescue/ImmuneModeSelectScene";
+import { ImmuneRescueScene } from "./immune_rescue/ImmuneRescueScene";
 import { WORLD_WIDTH, WORLD_HEIGHT } from "./types";
 
 /**
  * Phaser bootstrap. The whole game ships as JS + bundled JSON — no asset CDN.
- * Scale.FIT keeps a stable design resolution while filling the device screen
- * (festival tablets, phones, laptops). The actual letterboxing of in-game
- * coordinates is handled inside LevelScene so UI can stay edge-anchored.
+ * Scale.RESIZE fills the device screen (festival tablets, phones, laptops).
+ * Letterboxing of in-game coordinates is handled inside LevelScene / ImmuneRescue.
  */
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -31,15 +32,20 @@ const config: Phaser.Types.Core.GameConfig = {
     roundPixels: false,
   },
   fps: { target: 60, forceSetTimeOut: false },
-  scene: [BootScene, LevelSelectScene, LevelScene, ArcadeSelectScene, ...GAME_SCENES],
+  scene: [
+    BootScene,
+    LevelSelectScene,
+    LevelScene,
+    ArcadeSelectScene,
+    ImmuneModeSelectScene,
+    ImmuneRescueScene,
+    ...GAME_SCENES,
+  ],
 };
 
 const game = new Phaser.Game(config);
 
-// Test/debug hook: expose the game instance for headless verification scripts
-// (sci-game-live/play/verify*.mjs read scene state via page.evaluate).
-// No effect on gameplay. Safe to remove if the hook is unwanted in the shipped bundle.
+// Test/debug hook: expose the game instance for headless verification scripts.
 (window as unknown as { __PHASER_GAME?: Phaser.Game }).__PHASER_GAME = game;
 
-// Re-export so unused imports don't break tree-shaking
 export { WORLD_WIDTH, WORLD_HEIGHT };

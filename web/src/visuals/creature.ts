@@ -383,11 +383,33 @@ function buildSprite(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
  * STEERS toward the source when the signal is strong enough for it to sense.
  */
 function buildNeutrophil(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
-  const c = scene.add.container(def.creature.x, def.creature.y);
+  return buildNeutrophilAt(
+    scene,
+    def.creature.x,
+    def.creature.y,
+    def.creature.size,
+    def.palette.creature,
+    def.palette.creatureAccent,
+  );
+}
+
+/**
+ * Standalone neutrophil builder for Immune Rescue (no LevelDef required).
+ * Parameters: scene, world x/y, size scale, body hex string, nucleus hex string.
+ */
+export function buildNeutrophilAt(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  size: number,
+  skinHex: string,
+  accentHex: string,
+): CreatureVisual {
+  const c = scene.add.container(x, y);
   c.setDepth(6);
-  const skin = hexToInt(def.palette.creature);
-  const accent = hexToInt(def.palette.creatureAccent);
-  const s = def.creature.size;
+  const skin = hexToInt(skinHex);
+  const accent = hexToInt(accentHex);
+  const s = size;
 
   const g = scene.add.graphics();
   // Cell body — a slightly irregular rounded blob

@@ -385,14 +385,41 @@ function drawNorse(g: Phaser.GameObjects.Graphics, def: LevelDef, _worldW: numbe
 }
 
 function drawTissue(g: Phaser.GameObjects.Graphics, def: LevelDef, _worldW: number): void {
-  const ground = hexToInt(def.palette.ground);
-  const accent = hexToInt(def.palette.groundAccent);
+  drawTissueBackdrop(g, WORLD_WIDTH, WORLD_HEIGHT, {
+    bgTop: def.palette.bgTop,
+    bgBottom: def.palette.bgBottom,
+    ground: def.palette.ground,
+    groundAccent: def.palette.groundAccent,
+  });
+}
+
+/**
+ * Tissue backdrop usable without a LevelDef (Immune Rescue + Two Keys palette).
+ * Draws a fleshy gradient, capillary curves, and sparse cellular flecks.
+ */
+export function drawTissueBackdrop(
+  g: Phaser.GameObjects.Graphics,
+  worldW: number,
+  worldH: number,
+  palette: { bgTop: string; bgBottom: string; ground: string; groundAccent: string },
+): void {
+  const top = hexToInt(palette.bgTop);
+  const bot = hexToInt(palette.bgBottom);
+  const ground = hexToInt(palette.ground);
+  const accent = hexToInt(palette.groundAccent);
+
+  for (let i = 0; i < 48; i++) {
+    const t = i / 47;
+    const col = lerpColor(top, bot, t);
+    g.fillStyle(col, 1);
+    g.fillRect(0, (i * worldH) / 48, worldW, worldH / 48 + 1);
+  }
 
   // Soft, fleshy noise — overlapping translucent ellipses give a tissue look
   g.fillStyle(accent, 0.25);
   for (let i = 0; i < 30; i++) {
-    const x = pseudo(i, 3) * WORLD_WIDTH;
-    const y = pseudo(i, 7) * WORLD_HEIGHT;
+    const x = pseudo(i, 3) * worldW;
+    const y = pseudo(i, 7) * worldH;
     const r = 120 + pseudo(i, 11) * 200;
     g.fillEllipse(x, y, r * 1.6, r);
   }
@@ -403,7 +430,7 @@ function drawTissue(g: Phaser.GameObjects.Graphics, def: LevelDef, _worldW: numb
     const baseY = 200 + row * 230 + pseudo(row, 5) * 60;
     g.beginPath();
     g.moveTo(0, baseY);
-    for (let x = 0; x <= WORLD_WIDTH; x += 60) {
+    for (let x = 0; x <= worldW; x += 60) {
       const y = baseY + Math.sin((x + row * 100) * 0.005) * 30 + pseudo(x + row, 17) * 6;
       g.lineTo(x, y);
     }
@@ -412,13 +439,13 @@ function drawTissue(g: Phaser.GameObjects.Graphics, def: LevelDef, _worldW: numb
 
   // Subtle deep red wash at the bottom
   g.fillStyle(ground, 0.35);
-  g.fillRect(0, 950, WORLD_WIDTH, WORLD_HEIGHT - 950);
+  g.fillRect(0, worldH * 0.88, worldW, worldH * 0.12);
 
   // Sparse cellular flecks
   g.fillStyle(0xffffff, 0.07);
   for (let i = 0; i < 80; i++) {
-    const x = pseudo(i, 19) * WORLD_WIDTH;
-    const y = pseudo(i, 29) * WORLD_HEIGHT;
+    const x = pseudo(i, 19) * worldW;
+    const y = pseudo(i, 29) * worldH;
     g.fillCircle(x, y, pseudo(i, 31) * 2 + 0.6);
   }
 }

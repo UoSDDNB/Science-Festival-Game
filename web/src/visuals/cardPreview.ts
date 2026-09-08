@@ -295,3 +295,29 @@ export function drawCardMotif(
       fillBox(g, x, y, w, h, lvl.palette.bgTop, lvl.palette.bgBottom, rTop, rBottom);
   }
 }
+
+/**
+ * Home-card motif for Immune Rescue (not a LevelDef): tissue wash, neutrophil
+ * blob, and green bacterial dots with a faint scent ring.
+ */
+export function drawImmuneRescueMotif(
+  g: Phaser.GameObjects.Graphics,
+  x: number, y: number, w: number, h: number,
+  rTop: number, rBottom: number,
+): void {
+  fillBox(g, x, y, w, h, "#3a1220", "#7a2a3a", rTop, rBottom);
+  const m = Math.min(w, h);
+  const cx = x + w * 0.38;
+  const cy = y + h * 0.55;
+  g.fillStyle(hexToInt("#d8e8f8"), 0.95);
+  g.fillEllipse(cx, cy, m * 0.42, m * 0.36);
+  g.fillStyle(hexToInt("#4a6a9a"), 0.9);
+  g.fillEllipse(cx - m * 0.08, cy, m * 0.14, m * 0.1);
+  g.fillEllipse(cx + m * 0.06, cy + m * 0.04, m * 0.12, m * 0.09);
+  g.fillStyle(hexToInt("#5ad07a"), 0.95);
+  g.fillCircle(x + w * 0.72, y + h * 0.35, m * 0.08);
+  g.fillCircle(x + w * 0.82, y + h * 0.58, m * 0.06);
+  g.fillCircle(x + w * 0.68, y + h * 0.7, m * 0.05);
+  g.lineStyle(Math.max(1, m * 0.02), hexToInt("#4fd1c5"), 0.55);
+  g.strokeCircle(cx, cy, m * 0.32);
+}
