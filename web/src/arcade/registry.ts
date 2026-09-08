@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { GameDef } from "./types";
 import { DropCatchScene } from "./games/DropCatchScene";
+import { TapPulseScene } from "./games/TapPulseScene";
 
 /**
  * Arcade game registry — the single list ArcadeSelectScene renders from and
@@ -22,8 +23,19 @@ export const GAMES: GameDef[] = [
       return { score: p.score, lives: p.lives, catches: p.catches, streak: p.streak, state: p.state };
     },
   },
-  // Remaining five (locked cards until shipped — D-3 order):
-  { id: "tap_pulse", name: "Tap the Pulse", blurb: "Tap the falling signal pulses. Don't miss the beat.", accent: "#ffd060", locked: true },
+  {
+    id: "tap_pulse",
+    name: "Tap the Pulse",
+    blurb: "Tap the falling signal pulses. Don't miss the beat.",
+    accent: "#ffd060",
+    sceneKey: "arcade:tap-pulse",
+    scene: TapPulseScene,
+    snapshot: (s) => {
+      const p = s as unknown as TapPulseScene;
+      return { score: p.score, lives: p.lives, taps: p.taps, streak: p.streak, state: p.state };
+    },
+  },
+  // Remaining four (locked cards until shipped — D-3 order):
   { id: "sugar_match", name: "Sugar Match", blurb: "Swap cells until three match. Chain the cascades.", accent: "#f472b6", locked: true },
   { id: "signal_blocks", name: "Signal Blocks", blurb: "Stack the fragments, clear the lines, keep the channel open.", accent: "#818cf8", locked: true },
   { id: "line_manager", name: "Line Manager", blurb: "Route every signal to its cell before the junction jams.", accent: "#fb923c", locked: true },
