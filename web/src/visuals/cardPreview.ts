@@ -9,7 +9,6 @@ import { hexToInt } from "./palette";
  * glance:
  *
  *   ice_age    — ice block + snowflakes + acorn
- *   norse      — campfire + boulder + sleeping (coiled) dragon
  *   mast_cell  — nasal passage + pollen grains + granule-filled mast cell
  *
  * Used in two modes:
@@ -93,75 +92,7 @@ function drawIceAge(
   g.fillRect(ax - s * 0.09, ay - s * 0.78, s * 0.18, s * 0.42);
 }
 
-function drawNorse(
-  g: Phaser.GameObjects.Graphics,
-  x: number, y: number, w: number, h: number,
-  pal: LevelDef["palette"], rTop: number, rBottom: number,
-): void {
-  fillBox(g, x, y, w, h, pal.bgTop, pal.bgBottom, rTop, rBottom);
-  // Ground strip
-  g.fillStyle(hexToInt(pal.ground), 1);
-  g.fillRect(x, y + h * 0.8, w, h * 0.2);
-  const m = Math.min(w, h);
-  // Campfire (left): logs + layered flame plume
-  const fx = x + w * 0.2, fy = y + h * 0.8;
-  const fs = m * 0.34;
-  g.fillStyle(hexToInt(pal.obstacle), 1);
-  g.fillRoundedRect(fx - fs * 0.55, fy - fs * 0.14, fs * 1.1, fs * 0.2, fs * 0.1);
-  g.fillRoundedRect(fx - fs * 0.45, fy - fs * 0.28, fs * 0.9, fs * 0.18, fs * 0.09);
-  const flame = (hh: number, col: number, a: number): void => {
-    g.fillStyle(col, a);
-    g.beginPath();
-    g.moveTo(fx - hh * 0.42, fy);
-    g.lineTo(fx, fy - hh);
-    g.lineTo(fx + hh * 0.42, fy);
-    g.closePath();
-    g.fillPath();
-  };
-  flame(fs, hexToInt(pal.fire), 0.95);
-  flame(fs * 0.62, hexToInt(pal.fireHot), 0.95);
-  flame(fs * 0.32, hexToInt(pal.accent), 1);
-  // Boulder wall (centre): three rocks the fire must route around —
-  // mirrors the in-level `obstacles` geometry.
-  const boulders: Array<[number, number, number]> = [
-    [0.44, 0.34, 0.115],
-    [0.52, 0.62, 0.135],
-    [0.40, 0.82, 0.115],
-  ];
-  for (const [bx, by, br] of boulders) {
-    g.fillStyle(hexToInt(pal.obstacle), 1);
-    g.fillCircle(x + w * bx, y + h * by, m * br);
-    g.fillStyle(0xffffff, 0.14);
-    g.fillCircle(x + w * bx - m * br * 0.2, y + h * by - m * br * 0.25, m * br * 0.5);
-  }
-  // Sleeping coiled dragon (right)
-  const dx = x + w * 0.8, dy = y + h * 0.7;
-  const ds = m * 0.2;
-  g.lineStyle(ds * 0.48, hexToInt(pal.creature), 1);
-  g.beginPath();
-  g.arc(dx, dy, ds * 0.72, 0.4, Math.PI * 1.85);
-  g.strokePath();
-  g.fillStyle(hexToInt(pal.creature), 1);
-  g.fillCircle(dx + ds * 0.62, dy - ds * 0.4, ds * 0.42);
-  // Snout
-  g.beginPath();
-  g.moveTo(dx + ds * 0.9, dy - ds * 0.55);
-  g.lineTo(dx + ds * 1.35, dy - ds * 0.38);
-  g.lineTo(dx + ds * 0.9, dy - ds * 0.2);
-  g.closePath();
-  g.fillPath();
-  // Closed eye (sleeping)
-  g.lineStyle(Math.max(1.5, ds * 0.1), hexToInt(pal.creatureAccent), 0.9);
-  g.lineBetween(dx + ds * 0.55, dy - ds * 0.45, dx + ds * 0.78, dy - ds * 0.4);
-  // Small folded wing
-  g.fillStyle(hexToInt(pal.creatureAccent), 0.5);
-  g.beginPath();
-  g.moveTo(dx - ds * 0.35, dy - ds * 0.75);
-  g.lineTo(dx + ds * 0.15, dy - ds * 1.15);
-  g.lineTo(dx + ds * 0.25, dy - ds * 0.6);
-  g.closePath();
-  g.fillPath();
-}
+
 function drawMastCell(
   g: Phaser.GameObjects.Graphics,
   x: number, y: number, w: number, h: number,
@@ -281,9 +212,6 @@ export function drawCardMotif(
   switch (lvl.id) {
     case "ice_age":
       drawIceAge(g, x, y, w, h, lvl.palette, rTop, rBottom);
-      break;
-    case "norse":
-      drawNorse(g, x, y, w, h, lvl.palette, rTop, rBottom);
       break;
     case "mast_cell":
       drawMastCell(g, x, y, w, h, lvl.palette, rTop, rBottom);

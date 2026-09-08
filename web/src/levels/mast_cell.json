@@ -1,7 +1,7 @@
 {
   "id": "mast_cell",
   "name": "The Allergy Cell",
-  "order": 3,
+  "order": 2,
   "unlocked": true,
   "background": "nasal_journey",
   "worldWidth": 3840,

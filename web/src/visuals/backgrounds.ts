@@ -19,7 +19,6 @@ export function buildBackground(scene: Phaser.Scene, def: LevelDef): Phaser.Game
   } else {
     drawSkyGradient(g, def, worldW);
     if (def.background === "ice_age") drawIceAge(g, def, worldW);
-    else if (def.background === "norse") drawNorse(g, def, worldW);
     else if (def.background === "tissue") drawTissue(g, def, worldW);
     else drawEnchanted(g, def, worldW);
   }
@@ -359,30 +358,6 @@ function drawIceAge(g: Phaser.GameObjects.Graphics, def: LevelDef, _worldW: numb
   }
 }
 
-function drawNorse(g: Phaser.GameObjects.Graphics, def: LevelDef, _worldW: number): void {
-  const ground = hexToInt(def.palette.ground);
-  const accent = hexToInt(def.palette.groundAccent);
-  const obstacleCol = hexToInt(def.palette.obstacle);
-
-  // Distant fjord silhouettes
-  g.fillStyle(lerpColor(hexToInt(def.palette.bgBottom), ground, 0.5), 1);
-  drawMountainRow(g, 660, [0, 240, 520, 780, 1100, 1380, 1660, WORLD_WIDTH], 160, 80);
-
-  g.fillStyle(lerpColor(hexToInt(def.palette.bgBottom), ground, 0.75), 1);
-  drawMountainRow(g, 780, [0, 320, 660, 980, 1300, 1620, WORLD_WIDTH], 180, 90);
-
-  // Rocky foreground
-  g.fillStyle(ground, 1);
-  g.fillRect(0, 920, WORLD_WIDTH, WORLD_HEIGHT - 920);
-  g.fillStyle(accent, 0.4);
-  for (let i = 0; i < 12; i++) {
-    const x = (i / 12) * WORLD_WIDTH + Math.sin(i * 2.1) * 60;
-    g.fillEllipse(x, 940 + Math.cos(i) * 10, 220, 30);
-  }
-
-  // Mythic runes / sparks (decorative only — the obstacle proper is drawn over the level)
-  g.fillStyle(obstacleCol, 0.0); // reserved
-}
 
 function drawTissue(g: Phaser.GameObjects.Graphics, def: LevelDef, _worldW: number): void {
   const ground = hexToInt(def.palette.ground);

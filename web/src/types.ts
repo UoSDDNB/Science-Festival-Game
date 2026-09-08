@@ -35,8 +35,8 @@ export interface WinConfig {
   biologyLine: string;
 }
 
-export type CreatureKind = "scrat" | "dragon" | "sprite" | "mast_cell" | "neutrophil";
-export type BackgroundKind = "ice_age" | "norse" | "enchanted" | "tissue" | "nasal_journey";
+export type CreatureKind = "scrat" | "sprite" | "mast_cell" | "neutrophil";
+export type BackgroundKind = "ice_age" | "enchanted" | "tissue" | "nasal_journey";
 export type FireKind = "campfire" | "pollen";
 
 export interface FailConfig {

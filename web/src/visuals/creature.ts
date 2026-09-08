@@ -22,8 +22,6 @@ export function buildCreature(scene: Phaser.Scene, def: LevelDef): CreatureVisua
   switch (def.creature.kind) {
     case "scrat":
       return buildScrat(scene, def);
-    case "dragon":
-      return buildDragon(scene, def);
     case "mast_cell":
       return buildMastCell(scene, def);
     case "neutrophil":
@@ -115,64 +113,6 @@ function buildScrat(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
   };
 }
 
-function buildDragon(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
-  const c = scene.add.container(def.creature.x, def.creature.y);
-  c.setDepth(6);
-  const skin = hexToInt(def.palette.creature);
-  const accent = hexToInt(def.palette.creatureAccent);
-  const s = def.creature.size;
-
-  const g = scene.add.graphics();
-  // Coiled body
-  g.fillStyle(skin, 1);
-  g.fillEllipse(-30 * s, 30 * s, 180 * s, 120 * s);
-  g.fillEllipse(40 * s, -10 * s, 140 * s, 90 * s);
-  // Head
-  g.fillEllipse(80 * s, -50 * s, 100 * s, 70 * s);
-  // Belly scales
-  g.fillStyle(accent, 1);
-  for (let i = -3; i <= 3; i++) {
-    g.fillEllipse(i * 22 * s, 50 * s, 18 * s, 24 * s);
-  }
-  // Snout
-  g.fillStyle(skin, 1);
-  g.fillTriangle(120 * s, -55 * s, 150 * s, -40 * s, 120 * s, -30 * s);
-  // Eye
-  g.fillStyle(0xffe060, 1);
-  g.fillCircle(90 * s, -56 * s, 7 * s);
-  g.fillStyle(0x0a0a14, 1);
-  g.fillCircle(92 * s, -56 * s, 3 * s);
-  // Horn
-  g.fillStyle(accent, 1);
-  g.fillTriangle(70 * s, -80 * s, 80 * s, -110 * s, 90 * s, -78 * s);
-  // Wing tucked
-  g.fillStyle(skin, 0.9);
-  g.fillTriangle(-50 * s, -30 * s, -10 * s, -100 * s, 30 * s, -30 * s);
-  c.add(g);
-
-  const heart = scene.add.image(20 * s, 10 * s, "glow-warm");
-  heart.setBlendMode(Phaser.BlendModes.ADD);
-  heart.setAlpha(0).setScale(0.5 * s);
-  c.add(heart);
-
-  let heartBeat = 0;
-
-  return {
-    container: c,
-    setLifeSignal: (t: number) => {
-      heartBeat += 0.05;
-      const alpha = clamp(t, 0, 1) * 0.9;
-      const bpm = 0.5 + clamp(t, 0, 1) * 4;
-      const pulse = Math.pow(Math.max(0, Math.sin(heartBeat * bpm)), 0.4);
-      heart.setAlpha(alpha * (0.6 + 0.4 * pulse));
-      heart.setScale(0.45 * s + pulse * 0.2 * s + t * 0.2 * s);
-    },
-    iceDissolve: () => {
-      // dragon isn't iced
-    },
-    setThawed: () => {},
-  };
-}
 
 function buildMastCell(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
   const c = scene.add.container(def.creature.x, def.creature.y);
