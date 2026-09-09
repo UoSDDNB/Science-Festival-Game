@@ -6,16 +6,30 @@ import Phaser from "phaser";
  * Objects (good = smooth circles, bad = spiky stars — shape encodes type,
  * never colour alone) fall through a fixed-width play column. Drag anywhere
  * on the canvas to move the receptor bucket horizontally (1:1 finger→bucket,
- * clamped to the column; R2). Round starts on first tap (R1 ready state,
- * which IS the 3-line tutorial). 3 lives: missing a good OR catching a bad
- * object = −1 life + streak reset (R3). Endless with a CEILINGED speed ramp
- * (R3 numbers). Score: +10/catch, +5 per 5-catch milestone, +2 edge catch
- * (rim < 20 px) with floating "+2 edge!" text (R4). Round-over panel in the
- * site's result language: veil + card + "Play Again" / "Arcade" (R6).
+ * clamped to the column; R2).
+ *
+ * DRAG-DOWN FAST-FORWARD (arcade lane, 2026-09-09): while the pointer is
+ * down, its VERTICAL velocity (smoothed, px/s, +down) scales the fall speed
+ * of every falling object — and every new spawn inherits it — by a factor
+ * clamped to ×1..×3 (ffMult). A still-held pointer or an upward drag = ×1.
+ * Horizontal movement keeps controlling the bucket 1:1 (independent axes).
+ * On release the multiplier decays monotonically back to ×1 within 0.5 s.
+ *
+ * Round starts on first tap (R1 ready state, which IS the tutorial). 3
+ * lives: missing a good OR catching a bad object = −1 life + streak reset
+ * (R3). Endless with a CEILINGED speed ramp (R3 numbers, opening pace
+ * retuned 2026-09-09: the flat-90/1.8 s onboarding window was "too slow" —
+ * see HANDOFF LANE: playtime-arcade SESSION 1). Score: +10/catch, +5 per
+ * 5-catch milestone, +2 edge catch (rim < 20 px) with floating "+2 edge!"
+ * text (R4). Round-over panel in the site's result language: veil + card +
+ * "Play Again" / "Arcade" (R6).
  *
  * Public state fields + `objects` array are the harness surface (R5): the
  * verification harness pushes spawn() calls via page.evaluate and lets the
  * real update loop do the rest — no test hooks in the scene itself.
+ * Fast-forward surface: `ffMult` (applied multiplier, ×1..×3) and
+ * `ffVelocity` (smoothed pointer vertical velocity, px/s) — both plain
+ * public fields, readable without hooks.
  */
 
 export interface DropObject {
@@ -30,6 +44,21 @@ const GOOD_HUES = [0x7ec3ee, 0x4fd1c5, 0xffd86a, 0xf9a8d4, 0xa3e635];
 const BAD_COLOR = 0xef4444;
 const BUCKET_W = 96;
 const BUCKET_H = 28;
+// Opening-pace tuning (2026-09-09, user brief "opening pace is too slow"):
+// ONBOARD_CATCHES = length of the no-bad window; BASE_SPEED = opening fall
+// speed px/s; BASE_INTERVAL = opening spawn interval s. First spawn now
+// lands ~0.6 s after round start (was 1.8 s) and crosses catch height in
+// ~3.0 s at 1600×900 (was ~5.3 s) → engaging within ~3 s of round start.
+const ONBOARD_CATCHES = 5;
+const BASE_SPEED = 300;
+const BASE_INTERVAL = 0.6;
+// Fast-forward: pointer vertical velocity (px/s, +down) that maps to the
+// ×3 ceiling; DEAD_ZONE filters finger micro-jitter during horizontal
+// drags; the exponential decay returns ffMult to ×1 within ~0.5 s of
+// release (half-life ≈ 0.07 s; from the ×3 peak it is ×1.0002 at 0.5 s).
+const FF_VEL_MAX = 600;
+const FF_DEAD_ZONE = 60;
+const FF_DECAY = 10;
 
 export class DropCatchScene extends Phaser.Scene {
   // ---- harness-visible state (R5) ----
@@ -53,6 +82,18 @@ export class DropCatchScene extends Phaser.Scene {
   private keyL = false;
   private keyR = false;
   private dragging = false;
+  private lastPy: number | null = null; // pointer y of the previous velocity sample
+  private lastMoveT = 0; // ms timestamp of the previous velocity sample
+  private ffSamples: Array<{ y: number; t: number }> = []; // recent pointer y/t (velocity window)
+
+  // ---- fast-forward (R5 public surface, 2026-09-09) ----
+  // ffMult: the ×1..×3 multiplier currently applied to fall speed.
+  // ffVelocity: smoothed pointer vertical velocity in px/s (+ = downward).
+  ffMult = 1;
+  ffVelocity = 0;
+  // roundStart: game-time ms the current round began — harness surface for
+  // pacing checks (first spawn / first catch-height crossing measured against it).
+  roundStart = 0;
 
   constructor() {
     super("arcade:drop-catch");
@@ -80,6 +121,12 @@ export class DropCatchScene extends Phaser.Scene {
   startRound(): void {
     if (this.state !== "ready") return;
     this.state = "running";
+    this.roundStart = this.time.now;
+    this.ffMult = 1;
+    this.ffVelocity = 0;
+    this.lastPy = null;
+    this.lastMoveT = 0;
+    this.ffSamples = [];
     this.readyOverlay?.destroy(true);
     this.readyOverlay = null;
     this.readyVeil?.destroy(true);
@@ -107,6 +154,11 @@ export class DropCatchScene extends Phaser.Scene {
     this.readyVeil?.destroy(true);
     this.readyVeil = null;
     this.targetX = this.scale.width / 2;
+    this.ffMult = 1;
+    this.ffVelocity = 0;
+    this.lastPy = null;
+    this.lastMoveT = 0;
+    this.ffSamples = [];
     this.buildHud();
     this.buildReadyOverlay();
   }
@@ -131,18 +183,26 @@ export class DropCatchScene extends Phaser.Scene {
       this.drawStar(g, 0, 0, r);
       body = g;
     }
-    const obj: DropObject = { kind, body, r, vy: vy ?? this.currentSpeed(), dead: false };
+    // New spawns inherit the current fast-forward multiplier immediately
+    // (not one frame later): impatient players who drag down mid-fall see
+    // every object — including ones spawned during the drag — fall faster.
+    const obj: DropObject = { kind, body, r, vy: vy ?? this.currentSpeed() * this.ffMult, dead: false };
     this.objects.push(obj);
     return obj;
   }
 
   private currentSpeed(): number {
-    if (this.catches < 10) return 90;
-    return Math.min(120 + 2.2 * this.catches, 420);
+    if (this.catches < ONBOARD_CATCHES) return BASE_SPEED;
+    // Continuous with the opening base: the original ramp
+    // min(120 + 2.2·c, 420) is kept exactly where it exceeds BASE_SPEED
+    // (c ≥ ~82 → byte-identical late game, ceiling 420 intact); below that
+    // the game runs at the (higher) opening pace instead of the old flat-90
+    // dip. Monotone — no speed cliff at the onboarding boundary.
+    return Math.min(420, Math.max(BASE_SPEED, 120 + 2.2 * this.catches));
   }
 
   private currentSpawnInterval(): number {
-    if (this.catches < 10) return 1.8;
+    if (this.catches < ONBOARD_CATCHES) return BASE_INTERVAL;
     return Math.max(1.6 - 0.03 * this.catches, 0.7);
   }
 
@@ -152,7 +212,7 @@ export class DropCatchScene extends Phaser.Scene {
       delay: this.currentSpawnInterval() * 1000,
       callback: () => {
         if (this.state !== "running") return;
-        const badProb = this.catches < 10 ? 0 : Math.min(0.15 + 0.005 * this.catches, 0.35);
+        const badProb = this.catches < ONBOARD_CATCHES ? 0 : Math.min(0.15 + 0.005 * this.catches, 0.35);
         this.spawn(Math.random() * 100 < badProb * 100 ? "bad" : "good");
         this.scheduleSpawn(); // re-pace: interval tightens with catches
       },
@@ -171,12 +231,19 @@ export class DropCatchScene extends Phaser.Scene {
     const clamped = Phaser.Math.Clamp(this.targetX, this.col.x + BUCKET_W / 2, this.col.x + this.col.w - BUCKET_W / 2);
     if (this.dragging) this.bucket.x = clamped;
     else this.bucket.x += Phaser.Math.Clamp(clamped - this.bucket.x, -1400 * dt, 1400 * dt);
+    // fast-forward decay: monotone, bounded, back to ×1 within ~0.5 s of
+    // release (exponential; while dragging the input sample sets ffMult).
+    if (this.ffMult > 1) this.ffMult = Math.max(1, this.ffMult * Math.exp(-FF_DECAY * dt));
+    else if (this.ffMult < 1) this.ffMult = 1;
     if (this.state !== "running") return;
 
+    const base = this.catches < ONBOARD_CATCHES ? BASE_SPEED : this.currentSpeed();
     const catchLine = this.col.bottom - BUCKET_H;
     for (const o of this.objects) {
       if (o.dead) continue;
-      o.vy = Math.max(o.vy, this.catches < 10 ? 90 : this.currentSpeed()); // ramp applies to falling objects too
+      // ramp applies to falling objects too; fast-forward scales everything
+      // falling NOW (o.vy only ever moves UP — objects never slow down).
+      o.vy = Math.max(o.vy, base * this.ffMult);
       o.body.y += o.vy * dt;
       if (o.body.y - o.r > this.col.bottom + 40) {
         this.kill(o);
@@ -332,8 +399,12 @@ export class DropCatchScene extends Phaser.Scene {
     const c = this.col;
     const score = this.add.text(c.x, 64, "score 0", { fontFamily: "ui-monospace, monospace", fontSize: "26px", color: "#ffd86a", fontStyle: "bold" }).setOrigin(0, 0.5);
     const streak = this.add.text(c.x + 220, 64, "streak 0", { fontFamily: "ui-monospace, monospace", fontSize: "20px", color: "#7ee8a0" }).setOrigin(0, 0.5);
+    // Fast-forward hint (2026-09-09): top-right of the column, dual-screen
+    // legible (≥16 px in both the ~800 px tablet and the 1920 px wall ends;
+    // the column is always ≤680 px wide so there is room at the right edge).
+    const ffHint = this.add.text(c.x + c.w, 64, "drag ↓ to fast-forward", { fontFamily: "ui-monospace, monospace", fontSize: "18px", color: "#5a7a9a" }).setOrigin(1, 0.5);
     const back = this.add.text(28, 40, "← Arcade", { fontFamily: "ui-sans-serif, system-ui", fontSize: "22px", color: "#9fb5d8", fontStyle: "bold" }).setOrigin(0);
-    this.hud.add([score, streak, back]);
+    this.hud.add([score, streak, ffHint, back]);
     this.hudScore = score;
     this.hudStreak = streak;
     const hit = this.add.rectangle(28 + 60, 40, 150, 44, 0xffffff, 0.001).setInteractive({ useHandCursor: true }).on("pointerdown", () => this.scene.start("arcade-select"));
@@ -397,12 +468,48 @@ export class DropCatchScene extends Phaser.Scene {
       if (this.state === "over") return;
       this.dragging = true;
       this.targetX = p.worldX;
+      // fast-forward: arm the vertical-velocity sampler (pointerdown y is
+      // the first sample; a tap with no movement samples nothing → ×1)
+      this.lastPy = p.worldY;
+      this.lastMoveT = this.time.now;
     });
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
-      if (this.dragging) this.targetX = p.worldX;
+      if (!this.dragging) return;
+      this.targetX = p.worldX; // horizontal axis: bucket control, unchanged
+      // vertical axis: fast-forward. Samples are gated to the last few ms
+      // (the real pointermove cadence) and kept in a ~40 ms window; a still
+      // pointer simply never moves and ffMult decays to ×1 on its own.
+      const now = this.time.now;
+      const dts = (now - this.lastMoveT) / 1000;
+      if (dts > 0.004) {
+        const v = (p.worldY - (this.lastPy ?? p.worldY)) / dts; // +down
+        this.ffVelocity = Phaser.Math.Linear(this.ffVelocity, v, 0.4);
+        this.lastMoveT = now;
+        this.ffSamples.push({ y: p.worldY, t: now });
+        while (this.ffSamples.length > 2 && now - this.ffSamples[0]!.t > 40) this.ffSamples.shift();
+      }
+      this.lastPy = p.worldY;
+      // windowed velocity: mean over the samples kept in the last ~40 ms
+      // (smooth under any CDP/synthetic cadence); the dead zone filters
+      // finger micro-jitter during horizontal drags.
+      let v: number;
+      if (this.ffSamples.length >= 2) {
+        const a = this.ffSamples[0]!;
+        const b = this.ffSamples[this.ffSamples.length - 1]!;
+        v = (b.y - a.y) / Math.max((b.t - a.t) / 1000, 0.004);
+      } else {
+        v = this.ffVelocity;
+      }
+      if (Math.abs(v) < FF_DEAD_ZONE) v = 0;
+      const f = v > 0 ? Math.min(1 + 2 * (v / FF_VEL_MAX), 3) : 1;
+      this.ffMult = Math.max(this.ffMult, f); // ramp up fast, decay down (see update)
     });
     const end = () => {
       this.dragging = false;
+      // release: ffMult decays exponentially in update() (≤ 0.5 s back to ×1)
+      this.ffVelocity = 0;
+      this.lastPy = null;
+      this.lastMoveT = 0;
     };
     this.input.on("pointerup", end);
     this.input.on("pointerupoutside", end);
