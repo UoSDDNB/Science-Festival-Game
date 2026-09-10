@@ -34,10 +34,12 @@
 Science-Festival-Game/
 ├── deploy.sh                     # DEFAULT: build web/ (Phaser) + upload to VPS
 ├── README.md                     # This file
+├── images/                       # Immune Rescue art (Tissue, bacteria, neutrophil)
 ├── web/                          # ★ PRODUCTION — Phaser 3 + TypeScript
 │   ├── package.json              # phaser, vite, typescript
 │   ├── vite.config.ts
 │   ├── index.html                # Dev entry (#game mount)
+│   ├── public/images/            # Symlink → ../../images (served to Phaser)
 │   ├── deploy.sh                 # Optional: deploy from web/ only
 │   ├── dist/                     # Vite build output (committed from JLW sync)
 │   ├── docs/                     # Web-side design notes
@@ -57,6 +59,7 @@ Science-Festival-Game/
 │       │   ├── NeutrophilController.ts
 │       │   ├── BacterialSystem.ts
 │       │   ├── TissueHud.ts
+│       │   ├── ImmuneAssistant.ts    # Optional non-autonomous AI coach
 │       │   ├── ImmuneModeSelectScene.ts
 │       │   └── ImmuneRescueScene.ts
 │       ├── ui/                   # Thermometer, hints, win/fail, ScrollPanel…
@@ -184,6 +187,7 @@ A source injects heat into a **2D grid** ([`HeatField`](web/src/sim/HeatField.ts
 | Win | Engulf **8** colonies before tissue integrity hits 0 |
 | Fail | Tissue integrity ≤ 0 (infection pressure from live colonies) |
 | Biology | Chemotaxis (follow chemical trail) + phagocytosis (engulf) on win; uncontrolled infection on fail |
+| Optional AI | Toggle **AI route** — highlights a short visit order through all live colonies from your position (does not steer) |
 
 **Flow:** `level-select` → `immune-mode-select` → `immune-rescue` → `WinOverlay` / `FailOverlay` → Menu (level select) or Play Again (mode select on win; same mode retry on fail).
 
@@ -518,6 +522,19 @@ Educational walkthrough of every public surface in [`web/src/immune_rescue/`](we
 #### `startMode(mode)`
 
 - `this.scene.start("immune-rescue", { mode })`.
+
+### `ImmuneAssistant` — class (`ImmuneAssistant.ts`)
+
+Optional **AI route** toggle. Does not play the neutrophil.
+
+| Method | Role |
+|--------|------|
+| `constructor(scene, worldLayer)` | Route graphics + toggle (starts off) |
+| `update(nx, ny, colonies)` | When on, draws a short open tour through every live colony from the neutrophil |
+| `destroy()` | Clears graphics and toggle |
+| `shortestOpenTour(sx, sy, colonies)` | Nearest-neighbour visit order + 2-opt (exported helper) |
+
+Faint spokes to all colonies; bold numbered path = suggested order. Updates as colonies spawn or are engulfed.
 
 ### `ImmuneRescueScene` — class (`immune-rescue`)
 

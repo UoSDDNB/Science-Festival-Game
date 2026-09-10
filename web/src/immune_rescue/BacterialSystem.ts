@@ -3,6 +3,7 @@ import { ChemotaxisField } from "./ChemotaxisField";
 import { IMMUNE_CONFIG, IMMUNE_PALETTE } from "./config";
 import { Colony, Decoy, ImmuneMode } from "./types";
 import { hexToInt } from "../visuals/palette";
+import { IMMUNE_TEX, bacteriaDisplaySize } from "./assets";
 
 export type ScreenToWorld = (sx: number, sy: number) => [number, number];
 
@@ -61,26 +62,44 @@ export class BacterialSystem {
     return IMMUNE_CONFIG.winEngulfCount;
   }
 
-  /** Damage contribution this frame from infection pressure. */
-  infectionPressure(): number {
-    return this.colonies.length * IMMUNE_CONFIG.damagePerColonyPerSec;
+  /** Live colony positions for the optional AI route highlight. */
+  listColonies(): ReadonlyArray<{ id: number; x: number; y: number }> {
+    return this.colonies.map((c) => ({ id: c.id, x: c.x, y: c.y }));
   }
 
-  update(dt: number): void {
+  /** Damage contribution this frame from infection pressure (rises with progress). */
+  infectionPressure(): number {
+    const progress = this.progress01();
+    const ramp = 1 + progress * 0.85;
+    return this.colonies.length * IMMUNE_CONFIG.damagePerColonyPerSec * ramp;
+  }
+
+  /** 0 at start → 1 when win target is reached. */
+  private progress01(): number {
+    return Phaser.Math.Clamp(this.engulfed / Math.max(1, IMMUNE_CONFIG.winEngulfCount), 0, 1);
+  }
+
+  update(dt: number, neutrophilX = 0, neutrophilY = 0): void {
     this.p2ColonyCooldown = Math.max(0, this.p2ColonyCooldown - dt);
     this.p2DecoyCooldown = Math.max(0, this.p2DecoyCooldown - dt);
+    const progress = this.progress01();
 
     if (this.mode === "single") {
       this.aiSpawnTimer += dt;
-      if (
-        this.aiSpawnTimer >= IMMUNE_CONFIG.aiSpawnSeconds &&
-        this.colonies.length < IMMUNE_CONFIG.maxColonies
-      ) {
+      // Spawns get more frequent as the player clears colonies.
+      const spawnEvery = Phaser.Math.Linear(
+        IMMUNE_CONFIG.aiSpawnSeconds,
+        IMMUNE_CONFIG.aiSpawnSeconds * 0.35,
+        progress,
+      );
+      if (this.aiSpawnTimer >= spawnEvery && this.colonies.length < IMMUNE_CONFIG.maxColonies) {
         this.aiSpawnTimer = 0;
-        this.spawnColony(this.randomEdgeX(), this.randomEdgeY(), 1);
+        const sizeScale = Phaser.Math.Linear(1, IMMUNE_CONFIG.minColonySizeScale, progress);
+        this.spawnColony(this.randomEdgeX(), this.randomEdgeY(), sizeScale);
       }
     }
 
+    const fleeSpeed = IMMUNE_CONFIG.fleeSpeedMax * progress;
     for (const colony of this.colonies) {
       this.chemotaxis.emit(
         colony.x,
@@ -88,16 +107,45 @@ export class BacterialSystem {
         IMMUNE_CONFIG.colonyEmitAmount * colony.size * dt * 8,
         IMMUNE_CONFIG.colonyEmitRadiusCells,
       );
+
+      // Later colonies dodge the neutrophil — harder to catch.
+      if (fleeSpeed > 0.5) {
+        const fdx = colony.x - neutrophilX;
+        const fdy = colony.y - neutrophilY;
+        const fdist = Math.hypot(fdx, fdy) || 1;
+        colony.x = Phaser.Math.Clamp(
+          colony.x + (fdx / fdist) * fleeSpeed * dt,
+          80,
+          IMMUNE_CONFIG.worldWidth - 80,
+        );
+        colony.y = Phaser.Math.Clamp(
+          colony.y + (fdy / fdist) * fleeSpeed * dt,
+          80,
+          IMMUNE_CONFIG.worldHeight - 80,
+        );
+        const vis = colony.visual;
+        vis?.setPosition?.(colony.x, colony.y);
+      }
+
       colony.replicateTimer += dt;
+      const replicateEvery = Phaser.Math.Linear(
+        IMMUNE_CONFIG.replicateSeconds,
+        IMMUNE_CONFIG.replicateSeconds * 0.45,
+        progress,
+      );
       if (
         this.mode === "single" &&
-        colony.replicateTimer >= IMMUNE_CONFIG.replicateSeconds &&
+        colony.replicateTimer >= replicateEvery &&
         this.colonies.length < IMMUNE_CONFIG.maxColonies
       ) {
         colony.replicateTimer = 0;
         const ang = Math.random() * Math.PI * 2;
         const dist = colony.radius * 2.2;
-        this.spawnColony(colony.x + Math.cos(ang) * dist, colony.y + Math.sin(ang) * dist, colony.size * 0.85);
+        const childSize = Math.max(
+          IMMUNE_CONFIG.minColonySizeScale,
+          colony.size * Phaser.Math.Linear(0.85, 0.55, progress),
+        );
+        this.spawnColony(colony.x + Math.cos(ang) * dist, colony.y + Math.sin(ang) * dist, childSize);
       }
     }
 
@@ -148,9 +196,12 @@ export class BacterialSystem {
       [1480, 320],
       [1600, 700],
       [1200, 520],
+      [1700, 480],
+      [1100, 780],
+      [1350, 900],
     ];
     for (let i = 0; i < IMMUNE_CONFIG.initialColonies; i++) {
-      const [x, y] = spots[i] ?? [1000 + i * 120, 400 + i * 80];
+      const [x, y] = spots[i] ?? [900 + (i % 5) * 160, 280 + Math.floor(i / 5) * 200];
       this.spawnColony(x!, y!, 1);
     }
   }
@@ -176,15 +227,22 @@ export class BacterialSystem {
 
   private drawColony(x: number, y: number, radius: number): Phaser.GameObjects.Container {
     const c = this.scene.add.container(x, y);
-    const g = this.scene.add.graphics();
-    const col = hexToInt(IMMUNE_PALETTE.bacteria);
-    g.fillStyle(col, 0.9);
-    g.fillCircle(0, 0, radius);
-    g.fillStyle(0xffffff, 0.25);
-    g.fillCircle(-radius * 0.25, -radius * 0.2, radius * 0.35);
-    g.lineStyle(2, 0x1a3a22, 0.5);
-    g.strokeCircle(0, 0, radius);
-    c.add(g);
+    if (this.scene.textures.exists(IMMUNE_TEX.bacteria)) {
+      const img = this.scene.add.image(0, 0, IMMUNE_TEX.bacteria);
+      const { w, h } = bacteriaDisplaySize(radius);
+      img.setDisplaySize(w, h);
+      c.add(img);
+    } else {
+      const g = this.scene.add.graphics();
+      const col = hexToInt(IMMUNE_PALETTE.bacteria);
+      g.fillStyle(col, 0.9);
+      g.fillCircle(0, 0, radius);
+      g.fillStyle(0xffffff, 0.25);
+      g.fillCircle(-radius * 0.25, -radius * 0.2, radius * 0.35);
+      g.lineStyle(2, 0x1a3a22, 0.5);
+      g.strokeCircle(0, 0, radius);
+      c.add(g);
+    }
     this.worldLayer.add(c);
     return c;
   }

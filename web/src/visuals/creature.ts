@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { LevelDef } from "../types";
 import { hexToInt } from "./palette";
+import { neutrophilDisplaySize } from "../immune_rescue/assets";
 
 /**
  * Procedural creature silhouettes. Stylised, flat, intentionally low-effort —
@@ -395,7 +396,9 @@ function buildNeutrophil(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
 
 /**
  * Standalone neutrophil builder for Immune Rescue (no LevelDef required).
- * Parameters: scene, world x/y, size scale, body hex string, nucleus hex string.
+ * Uses `immune-neutrophil` PNG when loaded; falls back to procedural art.
+ * Display size matches bacteria via `neutrophilDisplaySize` — never call setScale
+ * on the sprite (native textures are 3000px and setScale(1) blows them up).
  */
 export function buildNeutrophilAt(
   scene: Phaser.Scene,
@@ -407,36 +410,34 @@ export function buildNeutrophilAt(
 ): CreatureVisual {
   const c = scene.add.container(x, y);
   c.setDepth(6);
-  const skin = hexToInt(skinHex);
-  const accent = hexToInt(accentHex);
   const s = size;
+  const baseDisplay = neutrophilDisplaySize(s);
 
-  const g = scene.add.graphics();
-  // Cell body — a slightly irregular rounded blob
-  g.fillStyle(skin, 0.95);
-  g.fillEllipse(0, 0, 150 * s, 130 * s);
-  g.fillEllipse(-55 * s, -35 * s, 60 * s, 50 * s);
-  g.fillEllipse(55 * s, 30 * s, 55 * s, 45 * s);
-  g.lineStyle(3 * s, 0xffffff, 0.18);
-  g.strokeEllipse(0, 0, 150 * s, 130 * s);
-  // Lobed nucleus (the neutrophil signature: 3-4 connected lobes)
-  g.fillStyle(accent, 0.9);
-  g.fillEllipse(-38 * s, -8 * s, 52 * s, 40 * s);
-  g.fillEllipse(10 * s, 14 * s, 48 * s, 38 * s);
-  g.fillEllipse(48 * s, -16 * s, 44 * s, 36 * s);
-  g.lineStyle(4 * s, accent, 0.7);
-  g.lineBetween(-20 * s, -2, 8 * s, 8);
-  g.lineBetween(26 * s, 10, 40 * s, -8);
-  // Pseudopod nubs (migration look)
-  g.fillStyle(skin, 0.9);
-  g.fillEllipse(-75 * s, 30 * s, 34 * s, 18 * s);
-  g.fillEllipse(72 * s, -34 * s, 32 * s, 16 * s);
-  c.add(g);
+  let sprite: Phaser.GameObjects.Image | null = null;
+  let graphics: Phaser.GameObjects.Graphics | null = null;
 
-  // Heart / life signal (same glow texture as the other creatures)
+  if (scene.textures.exists("immune-neutrophil")) {
+    sprite = scene.add.image(0, 0, "immune-neutrophil");
+    sprite.setDisplaySize(baseDisplay, baseDisplay);
+    c.add(sprite);
+  } else {
+    const skin = hexToInt(skinHex);
+    const accent = hexToInt(accentHex);
+    graphics = scene.add.graphics();
+    const r = baseDisplay;
+    graphics.fillStyle(skin, 0.95);
+    graphics.fillEllipse(0, 0, r, r * 0.9);
+    graphics.fillStyle(accent, 0.9);
+    graphics.fillEllipse(-r * 0.2, 0, r * 0.35, r * 0.28);
+    graphics.fillEllipse(r * 0.05, r * 0.08, r * 0.32, r * 0.26);
+    graphics.fillEllipse(r * 0.25, -r * 0.08, r * 0.28, r * 0.24);
+    c.add(graphics);
+  }
+
   const heart = scene.add.image(0, 0, "glow-warm");
   heart.setBlendMode(Phaser.BlendModes.ADD);
-  heart.setAlpha(0).setScale(0.5 * s);
+  heart.setAlpha(0);
+  heart.setDisplaySize(baseDisplay * 0.9, baseDisplay * 0.9);
   c.add(heart);
 
   let beat = 0;
@@ -447,9 +448,12 @@ export function buildNeutrophilAt(
       const tt = clamp(t, 0, 1);
       const p = Math.pow(Math.max(0, Math.sin(beat * (1 + tt * 3))), 0.4);
       heart.setAlpha(tt * 0.9 * (0.6 + 0.4 * p));
-      heart.setScale(0.4 * s + p * 0.2 * s + tt * 0.2 * s);
-      // Subtle membrane pulse
-      g.setScale(1 + tt * 0.02 + p * 0.01 * tt);
+      const glow = baseDisplay * (0.85 + p * 0.15 + tt * 0.1);
+      heart.setDisplaySize(glow, glow);
+      // Pulse via display size only — never setScale on huge source textures.
+      const pulse = baseDisplay * (1 + tt * 0.02 + p * 0.01 * tt);
+      if (sprite) sprite.setDisplaySize(pulse, pulse);
+      else if (graphics) graphics.setScale(pulse / baseDisplay);
     },
     iceDissolve: () => {
       // not iced

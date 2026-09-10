@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { ImmuneLaunchData, ImmuneMode } from "./types";
 import { IMMUNE_PALETTE } from "./config";
 import { hexToInt } from "../visuals/palette";
-import { drawTissueBackdrop } from "../visuals/backgrounds";
+import { addTissueBackground, viewportSize } from "./assets";
 
 /**
  * Mode picker shown immediately after the Immune Rescue home card.
@@ -10,30 +10,51 @@ import { drawTissueBackdrop } from "../visuals/backgrounds";
  */
 export class ImmuneModeSelectScene extends Phaser.Scene {
   private uiRoot: Phaser.GameObjects.Container | null = null;
+  private tissueBg: Phaser.GameObjects.Image | null = null;
+  private resizeTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor() {
     super("immune-mode-select");
   }
 
+  private onOrientationChange = (): void => {
+    window.setTimeout(() => {
+      this.scale.refresh();
+      this.scheduleRebuild();
+    }, 150);
+  };
+
   create(): void {
-    this.scale.on("resize", this.rebuild, this);
+    this.scale.on("resize", this.scheduleRebuild, this);
+    window.addEventListener("orientationchange", this.onOrientationChange);
     this.rebuild();
     this.input.keyboard?.on("keydown-ESC", () => this.scene.start("level-select"));
   }
 
   shutdown(): void {
-    this.scale.off("resize", this.rebuild, this);
+    this.scale.off("resize", this.scheduleRebuild, this);
+    window.removeEventListener("orientationchange", this.onOrientationChange);
+    this.resizeTimer?.remove(false);
   }
+
+  private scheduleRebuild = (): void => {
+    this.resizeTimer?.remove(false);
+    this.resizeTimer = this.time.delayedCall(80, () => this.rebuild());
+  };
 
   private rebuild = (): void => {
     this.uiRoot?.destroy(true);
-    const w = this.scale.width;
-    const h = this.scale.height;
-    this.uiRoot = this.add.container(0, 0);
+    this.tissueBg?.destroy();
+    const { w, h } = viewportSize(this);
+    this.cameras.main.setSize(w, h);
+    this.cameras.main.setScroll(0, 0);
+    this.cameras.main.setZoom(1);
 
-    const bg = this.add.graphics();
-    drawTissueBackdrop(bg, w, h, IMMUNE_PALETTE);
-    this.uiRoot.add(bg);
+    // Cover-zoom tissue to this device's screen; rebuilt on resize/rotate.
+    this.tissueBg = addTissueBackground(this, null, w, h);
+    this.tissueBg.setDepth(0);
+
+    this.uiRoot = this.add.container(0, 0).setDepth(1);
 
     const veil = this.add.rectangle(w / 2, h / 2, w, h, 0x070b14, 0.35);
     this.uiRoot.add(veil);

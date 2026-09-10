@@ -6,8 +6,9 @@ import { ImmuneMode } from "./types";
 export type ScreenToWorld = (sx: number, sy: number) => [number, number];
 
 /**
- * Touch steering for the neutrophil: virtual joystick (P1 zone) + optional
- * chemotaxis assist from the chemical gradient.
+ * Direct pointer steering: hold/drag with touch or mouse in the P1 zone and the
+ * neutrophil moves toward that world point. No on-screen joystick.
+ * Ignores UI chrome marked with data `blockSteer` (e.g. AI route toggle).
  */
 export class NeutrophilController {
   private readonly scene: Phaser.Scene;
@@ -17,12 +18,11 @@ export class NeutrophilController {
   private readonly toWorld: ScreenToWorld;
 
   private velocity = new Phaser.Math.Vector2(0, 0);
-  private joystickBase: Phaser.GameObjects.Arc | null = null;
-  private joystickKnob: Phaser.GameObjects.Arc | null = null;
-  private stickVector = new Phaser.Math.Vector2(0, 0);
+  private steerDir = new Phaser.Math.Vector2(0, 0);
   private activePointerId: number | null = null;
-  private baseX = 0;
-  private baseY = 0;
+  private targetX = 0;
+  private targetY = 0;
+  private hasTarget = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -36,13 +36,10 @@ export class NeutrophilController {
     this.chemotaxis = chemotaxis;
     this.mode = mode;
     this.toWorld = toWorld;
-    this.buildJoystick();
     scene.input.on("pointerdown", this.onDown, this);
     scene.input.on("pointermove", this.onMove, this);
     scene.input.on("pointerup", this.onUp, this);
     scene.input.on("pointerupoutside", this.onUp, this);
-    scene.scale.on("resize", this.layoutJoystick, this);
-    this.layoutJoystick();
   }
 
   get x(): number {
@@ -53,13 +50,26 @@ export class NeutrophilController {
     return this.body.y;
   }
 
-  /** Integrate velocity for one frame. */
+  /** Integrate velocity for one frame — toward the held pointer, plus soft chemotaxis. */
   update(dt: number): void {
     const assist = this.chemotaxis.sampleGradient(this.body.x, this.body.y);
     assist.scale(IMMUNE_CONFIG.neutrophilSpeed * IMMUNE_CONFIG.chemotaxisAssist);
 
-    const stick = this.stickVector.clone().scale(IMMUNE_CONFIG.neutrophilSpeed);
-    this.velocity.set(stick.x + assist.x, stick.y + assist.y);
+    if (this.hasTarget) {
+      const dx = this.targetX - this.body.x;
+      const dy = this.targetY - this.body.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 8) {
+        this.steerDir.set(0, 0);
+      } else {
+        this.steerDir.set(dx / dist, dy / dist);
+      }
+    } else {
+      this.steerDir.set(0, 0);
+    }
+
+    const steer = this.steerDir.clone().scale(IMMUNE_CONFIG.neutrophilSpeed);
+    this.velocity.set(steer.x + assist.x, steer.y + assist.y);
 
     this.body.x = Phaser.Math.Clamp(
       this.body.x + this.velocity.x * dt,
@@ -78,35 +88,6 @@ export class NeutrophilController {
     this.scene.input.off("pointermove", this.onMove, this);
     this.scene.input.off("pointerup", this.onUp, this);
     this.scene.input.off("pointerupoutside", this.onUp, this);
-    this.scene.scale.off("resize", this.layoutJoystick, this);
-    this.joystickBase?.destroy();
-    this.joystickKnob?.destroy();
-  }
-
-  private buildJoystick(): void {
-    const r = IMMUNE_CONFIG.joystickRadius;
-    this.joystickBase = this.scene.add
-      .circle(0, 0, r, 0x0a1424, 0.45)
-      .setStrokeStyle(2, 0x4fd1c5, 0.7)
-      .setScrollFactor(0)
-      .setDepth(1500);
-    this.joystickKnob = this.scene.add
-      .circle(0, 0, r * 0.42, 0x4fd1c5, 0.85)
-      .setScrollFactor(0)
-      .setDepth(1501);
-  }
-
-  private layoutJoystick(): void {
-    const w = this.scene.scale.width;
-    const h = this.scene.scale.height;
-    const r = IMMUNE_CONFIG.joystickRadius;
-    // Single: bottom-left. Two-player: bottom of left half.
-    const zoneRight = this.mode === "two" ? w * 0.5 : w;
-    this.baseX = Phaser.Math.Clamp(r + 24, r + 8, zoneRight - r - 16);
-    this.baseY = h - r - 28;
-    this.joystickBase?.setPosition(this.baseX, this.baseY);
-    this.joystickKnob?.setPosition(this.baseX, this.baseY);
-    this.stickVector.set(0, 0);
   }
 
   private inP1Zone(pointer: Phaser.Input.Pointer): boolean {
@@ -114,49 +95,56 @@ export class NeutrophilController {
     return pointer.x < this.scene.scale.width * 0.5;
   }
 
+  /** True when the pointer is over HUD that should not steer the neutrophil. */
+  private hitsSteerBlocker(pointer: Phaser.Input.Pointer): boolean {
+    const hits = this.scene.input.hitTestPointer(pointer);
+    return hits.some((obj) => {
+      const go = obj as Phaser.GameObjects.GameObject & {
+        getData?: (key: string) => unknown;
+        parentContainer?: Phaser.GameObjects.Container | null;
+      };
+      if (go.getData?.("blockSteer")) return true;
+      let p: Phaser.GameObjects.Container | null | undefined = go.parentContainer;
+      while (p) {
+        if (p.getData?.("blockSteer")) return true;
+        p = p.parentContainer;
+      }
+      return false;
+    });
+  }
+
   private onDown(pointer: Phaser.Input.Pointer): void {
     if (!this.inP1Zone(pointer)) return;
+    if (this.hitsSteerBlocker(pointer)) return;
     if (this.activePointerId !== null) return;
-    const dx = pointer.x - this.baseX;
-    const dy = pointer.y - this.baseY;
-    const nearStick = Math.hypot(dx, dy) <= IMMUNE_CONFIG.joystickRadius * 1.35;
-    const [wx, wy] = this.toWorld(pointer.x, pointer.y);
-    const nearBody =
-      Math.hypot(wx - this.body.x, wy - this.body.y) <= IMMUNE_CONFIG.neutrophilRadius * 2.2;
-    if (!nearStick && !nearBody) return;
     this.activePointerId = pointer.id;
-    this.applyStick(pointer.x, pointer.y);
+    this.setTargetFromPointer(pointer);
   }
 
   private onMove(pointer: Phaser.Input.Pointer): void {
     if (pointer.id !== this.activePointerId) return;
-    this.applyStick(pointer.x, pointer.y);
+    if (!this.inP1Zone(pointer) || this.hitsSteerBlocker(pointer)) {
+      this.clearTarget();
+      return;
+    }
+    this.setTargetFromPointer(pointer);
   }
 
   private onUp(pointer: Phaser.Input.Pointer): void {
     if (pointer.id !== this.activePointerId) return;
     this.activePointerId = null;
-    this.stickVector.set(0, 0);
-    this.joystickKnob?.setPosition(this.baseX, this.baseY);
+    this.clearTarget();
   }
 
-  private applyStick(px: number, py: number): void {
-    const r = IMMUNE_CONFIG.joystickRadius;
-    let dx = px - this.baseX;
-    let dy = py - this.baseY;
-    const len = Math.hypot(dx, dy) || 1;
-    if (len > r) {
-      dx = (dx / len) * r;
-      dy = (dy / len) * r;
-    }
-    this.joystickKnob?.setPosition(this.baseX + dx, this.baseY + dy);
-    const nx = dx / r;
-    const ny = dy / r;
-    const mag = Math.hypot(nx, ny);
-    if (mag < IMMUNE_CONFIG.joystickDeadzone) {
-      this.stickVector.set(0, 0);
-      return;
-    }
-    this.stickVector.set(nx, ny);
+  private setTargetFromPointer(pointer: Phaser.Input.Pointer): void {
+    const [wx, wy] = this.toWorld(pointer.x, pointer.y);
+    this.targetX = wx;
+    this.targetY = wy;
+    this.hasTarget = true;
+  }
+
+  private clearTarget(): void {
+    this.hasTarget = false;
+    this.steerDir.set(0, 0);
   }
 }

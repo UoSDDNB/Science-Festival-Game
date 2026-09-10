@@ -45,8 +45,8 @@ export class TissueHud {
     this.layout();
     this.setHint(
       mode === "two"
-        ? "P1 left: steer neutrophil · P2 right: tap seed / hold decoy"
-        : "Follow the teal scent · engulf green colonies before tissue fails",
+        ? "P1 left: drag toward where you want to go · P2 right: tap seed / hold decoy"
+        : "Drag or hold to move the neutrophil · follow the teal scent",
     );
   }
 

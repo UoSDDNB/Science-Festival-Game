@@ -4,28 +4,33 @@ import { ImmunePalette } from "./types";
 export const IMMUNE_CONFIG = {
   worldWidth: 1920,
   worldHeight: 1080,
-  winEngulfCount: 8,
+  /** Colonies the player must engulf to win (ramps difficulty with progress). */
+  winEngulfCount: 18,
   maxTissueDamage: 100,
   /** Damage per second scaled by live colony count. */
-  damagePerColonyPerSec: 1.35,
+  damagePerColonyPerSec: 1.55,
   neutrophilSpeed: 280,
-  neutrophilRadius: 42,
+  neutrophilRadius: 360,
   chemotaxisAssist: 0.28,
   joystickRadius: 72,
   joystickDeadzone: 0.12,
-  colonyBaseRadius: 28,
+  colonyBaseRadius: 120,
   colonyEmitAmount: 14,
   colonyEmitRadiusCells: 2.5,
   replicateSeconds: 7.5,
   aiSpawnSeconds: 5.5,
-  maxColonies: 14,
+  maxColonies: 22,
   maxDecoys: 6,
   decoyEmitAmount: 18,
   decoyLifeSeconds: 9,
   p2ColonyCooldown: 1.1,
   p2DecoyCooldown: 2.2,
-  initialColonies: 3,
+  initialColonies: 6,
   engulfBurstCount: 12,
+  /** How strongly late-game colonies flee the neutrophil (world units / sec at full progress). */
+  fleeSpeedMax: 95,
+  /** Late-game colony size multiplier floor (smaller = harder to engulf). */
+  minColonySizeScale: 0.45,
 } as const;
 
 export const IMMUNE_PALETTE: ImmunePalette = {

@@ -14,7 +14,7 @@ export interface Colony {
   size: number;
   replicateTimer: number;
   /** Runtime Phaser container; typed loosely to avoid pulling Phaser into this module. */
-  visual: { destroy: (fromScene?: boolean) => void } | null;
+  visual: { destroy: (fromScene?: boolean) => void; setPosition?: (x: number, y: number) => void } | null;
 }
 
 export interface Decoy {

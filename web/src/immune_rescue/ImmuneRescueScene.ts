@@ -5,9 +5,10 @@ import { ChemotaxisField } from "./ChemotaxisField";
 import { NeutrophilController } from "./NeutrophilController";
 import { BacterialSystem } from "./BacterialSystem";
 import { TissueHud } from "./TissueHud";
+import { ImmuneAssistant } from "./ImmuneAssistant";
 import { HeatOverlay } from "../visuals/heatOverlay";
 import { buildNeutrophilAt } from "../visuals/creature";
-import { drawTissueBackdrop } from "../visuals/backgrounds";
+import { addTissueBackground, zoomTissueToFill, viewportSize } from "./assets";
 import { FailOverlay } from "../ui/FailOverlay";
 import { WinOverlay } from "../ui/WinOverlay";
 import { LevelDef } from "../types";
@@ -18,6 +19,7 @@ import { LevelDef } from "../types";
  */
 export class ImmuneRescueScene extends Phaser.Scene {
   private mode: ImmuneMode = "single";
+  private tissueBg!: Phaser.GameObjects.Image;
   private worldLayer!: Phaser.GameObjects.Container;
   private chemotaxis!: ChemotaxisField;
   private heatOverlay!: HeatOverlay;
@@ -25,7 +27,10 @@ export class ImmuneRescueScene extends Phaser.Scene {
   private controller!: NeutrophilController;
   private bacteria!: BacterialSystem;
   private hud!: TissueHud;
+  private assistant!: ImmuneAssistant;
+  /** Uniform fit scale so the whole playfield stays on-screen. */
   private worldScale = 1;
+  private resizeTimer: Phaser.Time.TimerEvent | null = null;
   private done = false;
   private winOverlay: WinOverlay | null = null;
   private failOverlay: FailOverlay | null = null;
@@ -34,17 +39,29 @@ export class ImmuneRescueScene extends Phaser.Scene {
     super("immune-rescue");
   }
 
+  private onOrientationChange = (): void => {
+    window.setTimeout(() => {
+      this.scale.refresh();
+      this.scheduleResize();
+    }, 150);
+  };
+
   init(data: ImmuneLaunchData): void {
     this.mode = data?.mode === "two" ? "two" : "single";
     this.done = false;
   }
 
   create(): void {
-    this.worldLayer = this.add.container(0, 0);
+    const { w, h } = viewportSize(this);
+    this.cameras.main.setScroll(0, 0);
+    this.cameras.main.setZoom(1);
 
-    const bg = this.add.graphics();
-    drawTissueBackdrop(bg, IMMUNE_CONFIG.worldWidth, IMMUNE_CONFIG.worldHeight, IMMUNE_PALETTE);
-    this.worldLayer.add(bg);
+    // Cover-zoom tissue to the player's screen; updated on every resize/rotate.
+    this.tissueBg = addTissueBackground(this, null, w, h);
+    this.tissueBg.setDepth(0);
+
+    this.worldLayer = this.add.container(0, 0);
+    this.worldLayer.setDepth(1);
 
     this.chemotaxis = new ChemotaxisField(IMMUNE_CONFIG.worldWidth, IMMUNE_CONFIG.worldHeight);
     this.heatOverlay = new HeatOverlay(this, this.chemotaxis.field, IMMUNE_CONFIG.worldWidth, {
@@ -56,7 +73,7 @@ export class ImmuneRescueScene extends Phaser.Scene {
       this,
       420,
       IMMUNE_CONFIG.worldHeight / 2,
-      0.85,
+      1,
       IMMUNE_PALETTE.neutrophil,
       IMMUNE_PALETTE.neutrophilAccent,
     );
@@ -77,9 +94,11 @@ export class ImmuneRescueScene extends Phaser.Scene {
       (sx, sy) => this.screenToWorld(sx, sy),
     );
     this.hud = new TissueHud(this, this.mode);
+    this.assistant = new ImmuneAssistant(this, this.worldLayer);
 
     this.makeBackButton();
-    this.scale.on("resize", this.handleResize, this);
+    this.scale.on("resize", this.scheduleResize, this);
+    window.addEventListener("orientationchange", this.onOrientationChange);
     this.input.keyboard?.on("keydown-ESC", () => this.scene.start("level-select"));
     this.handleResize();
   }
@@ -89,7 +108,7 @@ export class ImmuneRescueScene extends Phaser.Scene {
     const dt = Math.min(0.05, deltaMs / 1000);
 
     this.controller.update(dt);
-    this.bacteria.update(dt);
+    this.bacteria.update(dt, this.controller.x, this.controller.y);
     this.chemotaxis.update(dt);
     this.heatOverlay.update();
 
@@ -109,6 +128,8 @@ export class ImmuneRescueScene extends Phaser.Scene {
       this.bacteria.colonyCount,
     );
 
+    this.assistant.update(this.controller.x, this.controller.y, this.bacteria.listColonies());
+
     if (this.bacteria.engulfedCount >= IMMUNE_CONFIG.winEngulfCount) {
       this.handleWin();
     } else if (this.hud.tissueIntegrity <= 0) {
@@ -117,19 +138,34 @@ export class ImmuneRescueScene extends Phaser.Scene {
   }
 
   shutdown(): void {
-    this.scale.off("resize", this.handleResize, this);
+    this.scale.off("resize", this.scheduleResize, this);
+    window.removeEventListener("orientationchange", this.onOrientationChange);
+    this.resizeTimer?.remove(false);
     this.controller?.destroy();
     this.bacteria?.destroy();
     this.hud?.destroy();
+    this.assistant?.destroy();
     this.heatOverlay?.destroy();
     this.chemotaxis?.destroy();
     this.winOverlay?.destroy();
     this.failOverlay?.destroy();
   }
 
+  private scheduleResize = (): void => {
+    this.resizeTimer?.remove(false);
+    this.resizeTimer = this.time.delayedCall(80, () => this.handleResize());
+  };
+
   private handleResize = (): void => {
-    const w = this.scale.width;
-    const h = this.scale.height;
+    const { w, h } = viewportSize(this);
+    this.cameras.main.setSize(w, h);
+    this.cameras.main.setScroll(0, 0);
+    this.cameras.main.setZoom(1);
+
+    // Re-zoom tissue to cover whatever screen the player is on.
+    zoomTissueToFill(this.tissueBg, w, h);
+
+    // Fit the 1920×1080 playfield inside the screen (letterbox if needed).
     this.worldScale = Math.min(w / IMMUNE_CONFIG.worldWidth, h / IMMUNE_CONFIG.worldHeight);
     const ox = (w - IMMUNE_CONFIG.worldWidth * this.worldScale) / 2;
     const oy = (h - IMMUNE_CONFIG.worldHeight * this.worldScale) / 2;
