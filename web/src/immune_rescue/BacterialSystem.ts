@@ -62,7 +62,7 @@ export class BacterialSystem {
     return IMMUNE_CONFIG.winEngulfCount;
   }
 
-  /** Live colony positions for the optional AI route highlight. */
+  /** Live colony positions (e.g. for debugging or future helpers). */
   listColonies(): ReadonlyArray<{ id: number; x: number; y: number }> {
     return this.colonies.map((c) => ({ id: c.id, x: c.x, y: c.y }));
   }
@@ -85,8 +85,9 @@ export class BacterialSystem {
     const progress = this.progress01();
 
     if (this.mode === "single") {
+      this.maintainColonyPopulation(progress, neutrophilX, neutrophilY);
+    } else {
       this.aiSpawnTimer += dt;
-      // Spawns get more frequent as the player clears colonies.
       const spawnEvery = Phaser.Math.Linear(
         IMMUNE_CONFIG.aiSpawnSeconds,
         IMMUNE_CONFIG.aiSpawnSeconds * 0.35,
@@ -100,6 +101,7 @@ export class BacterialSystem {
     }
 
     const fleeSpeed = IMMUNE_CONFIG.fleeSpeedMax * progress;
+    const margin = 80;
     for (const colony of this.colonies) {
       this.chemotaxis.emit(
         colony.x,
@@ -108,24 +110,29 @@ export class BacterialSystem {
         IMMUNE_CONFIG.colonyEmitRadiusCells,
       );
 
+      // Bacteria drift continuously — harder to catch without steering onto them.
+      const wanderSpeed =
+        IMMUNE_CONFIG.bacteriaWanderSpeed * (0.55 + colony.size * 0.45) * (1 + progress * 0.35);
+      colony.wanderAngle += (Math.random() - 0.5) * dt * 2.8;
+      colony.x += Math.cos(colony.wanderAngle) * wanderSpeed * dt;
+      colony.y += Math.sin(colony.wanderAngle) * wanderSpeed * dt;
+
       // Later colonies dodge the neutrophil — harder to catch.
       if (fleeSpeed > 0.5) {
         const fdx = colony.x - neutrophilX;
         const fdy = colony.y - neutrophilY;
         const fdist = Math.hypot(fdx, fdy) || 1;
-        colony.x = Phaser.Math.Clamp(
-          colony.x + (fdx / fdist) * fleeSpeed * dt,
-          80,
-          IMMUNE_CONFIG.worldWidth - 80,
-        );
-        colony.y = Phaser.Math.Clamp(
-          colony.y + (fdy / fdist) * fleeSpeed * dt,
-          80,
-          IMMUNE_CONFIG.worldHeight - 80,
-        );
-        const vis = colony.visual;
-        vis?.setPosition?.(colony.x, colony.y);
+        const fleeRadius = IMMUNE_CONFIG.neutrophilRadius * 1.8;
+        if (fdist < fleeRadius) {
+          const urgency = 1 - fdist / fleeRadius;
+          colony.x += (fdx / fdist) * fleeSpeed * urgency * dt;
+          colony.y += (fdy / fdist) * fleeSpeed * urgency * dt;
+        }
       }
+
+      colony.x = Phaser.Math.Clamp(colony.x, margin, IMMUNE_CONFIG.worldWidth - margin);
+      colony.y = Phaser.Math.Clamp(colony.y, margin, IMMUNE_CONFIG.worldHeight - margin);
+      colony.visual?.setPosition?.(colony.x, colony.y);
 
       colony.replicateTimer += dt;
       const replicateEvery = Phaser.Math.Linear(
@@ -134,7 +141,7 @@ export class BacterialSystem {
         progress,
       );
       if (
-        this.mode === "single" &&
+        this.mode === "two" &&
         colony.replicateTimer >= replicateEvery &&
         this.colonies.length < IMMUNE_CONFIG.maxColonies
       ) {
@@ -164,8 +171,9 @@ export class BacterialSystem {
     }
   }
 
-  /** Engulf any colony overlapping the neutrophil; returns how many cleared. */
-  tryEngulf(nx: number, ny: number, radius: number): number {
+  /** Engulf overlapping colonies when the player is actively steering onto them. */
+  tryEngulf(nx: number, ny: number, radius: number, isSteering: boolean): number {
+    if (!isSteering) return 0;
     let cleared = 0;
     for (const colony of [...this.colonies]) {
       const d = Math.hypot(colony.x - nx, colony.y - ny);
@@ -177,6 +185,54 @@ export class BacterialSystem {
       }
     }
     return cleared;
+  }
+
+  /**
+   * All live colonies sorted nearest-first — NET fibers travel from the neutrophil.
+   */
+  coloniesForNetosis(nx: number, ny: number): Array<{ id: number; x: number; y: number; radius: number }> {
+    return this.colonies
+      .map((c) => ({ id: c.id, x: c.x, y: c.y, radius: c.radius }))
+      .sort((a, b) => {
+        const da = Math.hypot(a.x - nx, a.y - ny);
+        const db = Math.hypot(b.x - nx, b.y - ny);
+        return da - db;
+      });
+  }
+
+  /**
+   * Colonies within NETosis reach, nearest first.
+   */
+  coloniesInNetosisRange(
+    nx: number,
+    ny: number,
+    radius: number,
+  ): Array<{ id: number; x: number; y: number; radius: number }> {
+    return this.colonies
+      .filter((c) => Math.hypot(c.x - nx, c.y - ny) <= radius + c.radius * 0.85)
+      .map((c) => ({ id: c.id, x: c.x, y: c.y, radius: c.radius }))
+      .sort((a, b) => {
+        const da = Math.hypot(a.x - nx, a.y - ny);
+        const db = Math.hypot(b.x - nx, b.y - ny);
+        return da - db;
+      });
+  }
+
+  /** Live position for a traveling NET fiber to track a moving colony. */
+  getColonyPosition(id: number): { x: number; y: number; radius: number } | null {
+    const colony = this.colonies.find((c) => c.id === id);
+    return colony ? { x: colony.x, y: colony.y, radius: colony.radius } : null;
+  }
+
+  /** Kill one colony after a NET fiber arrives — counts toward win target. */
+  netosisKillColony(id: number): boolean {
+    const colony = this.colonies.find((c) => c.id === id);
+    if (!colony) return false;
+    const { x, y } = colony;
+    this.removeColony(colony);
+    this.engulfed += 1;
+    this.netBurst(x, y);
+    return true;
   }
 
   destroy(): void {
@@ -194,11 +250,8 @@ export class BacterialSystem {
   private seedInitial(): void {
     const spots = [
       [1480, 320],
-      [1600, 700],
       [1200, 520],
-      [1700, 480],
-      [1100, 780],
-      [1350, 900],
+      [1600, 700],
     ];
     for (let i = 0; i < IMMUNE_CONFIG.initialColonies; i++) {
       const [x, y] = spots[i] ?? [900 + (i % 5) * 160, 280 + Math.floor(i / 5) * 200];
@@ -206,8 +259,33 @@ export class BacterialSystem {
     }
   }
 
+  /** Single-player: refill to 2–3 bacteria whenever the player clears one. */
+  private maintainColonyPopulation(progress: number, avoidX: number, avoidY: number): void {
+    while (this.colonies.length < IMMUNE_CONFIG.minColoniesOnScreen) {
+      if (!this.spawnReplenishment(progress, avoidX, avoidY)) break;
+    }
+    while (this.colonies.length < IMMUNE_CONFIG.maxColoniesOnScreen) {
+      if (!this.spawnReplenishment(progress, avoidX, avoidY)) break;
+    }
+  }
+
+  private spawnReplenishment(progress: number, avoidX: number, avoidY: number): boolean {
+    if (this.colonies.length >= IMMUNE_CONFIG.maxColoniesOnScreen) return false;
+    const sizeScale = Phaser.Math.Linear(1, IMMUNE_CONFIG.minColonySizeScale, progress);
+    let x = this.randomEdgeX();
+    let y = this.randomEdgeY();
+    for (let i = 0; i < 10; i++) {
+      if (Math.hypot(x - avoidX, y - avoidY) > IMMUNE_CONFIG.neutrophilRadius * 2.2) break;
+      x = this.randomEdgeX();
+      y = this.randomEdgeY();
+    }
+    return this.spawnColony(x, y, sizeScale) !== null;
+  }
+
   private spawnColony(x: number, y: number, size: number): Colony | null {
-    if (this.colonies.length >= IMMUNE_CONFIG.maxColonies) return null;
+    const cap =
+      this.mode === "single" ? IMMUNE_CONFIG.maxColoniesOnScreen : IMMUNE_CONFIG.maxColonies;
+    if (this.colonies.length >= cap) return null;
     const cx = Phaser.Math.Clamp(x, 80, IMMUNE_CONFIG.worldWidth - 80);
     const cy = Phaser.Math.Clamp(y, 80, IMMUNE_CONFIG.worldHeight - 80);
     const radius = IMMUNE_CONFIG.colonyBaseRadius * size;
@@ -219,6 +297,7 @@ export class BacterialSystem {
       radius,
       size,
       replicateTimer: 0,
+      wanderAngle: Math.random() * Math.PI * 2,
       visual,
     };
     this.colonies.push(colony);
@@ -327,6 +406,23 @@ export class BacterialSystem {
         y: y + Math.sin(ang) * 40,
         alpha: 0,
         duration: 320,
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  private netBurst(x: number, y: number): void {
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spark = this.scene.add.circle(x, y, 3, 0xe8d8ff, 0.95);
+      this.worldLayer.add(spark);
+      this.scene.tweens.add({
+        targets: spark,
+        x: x + Math.cos(ang) * 28,
+        y: y + Math.sin(ang) * 28,
+        alpha: 0,
+        scale: 0.2,
+        duration: 480,
         onComplete: () => spark.destroy(),
       });
     }

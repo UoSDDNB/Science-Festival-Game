@@ -45,8 +45,8 @@ export class TissueHud {
     this.layout();
     this.setHint(
       mode === "two"
-        ? "P1 left: drag toward where you want to go · P2 right: tap seed / hold decoy"
-        : "Drag or hold to move the neutrophil · follow the teal scent",
+        ? "P1 left: drag onto bacteria to engulf · P2 right: tap seed / hold decoy · AI help releases granule proteins and chromatin"
+        : "Drag onto bacteria to engulf them · follow the teal scent · press AI help to release granule proteins and chromatin",
     );
   }
 

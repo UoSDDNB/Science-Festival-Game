@@ -8,7 +8,7 @@ export type ScreenToWorld = (sx: number, sy: number) => [number, number];
 /**
  * Direct pointer steering: hold/drag with touch or mouse in the P1 zone and the
  * neutrophil moves toward that world point. No on-screen joystick.
- * Ignores UI chrome marked with data `blockSteer` (e.g. AI route toggle).
+ * Ignores UI chrome marked with data `blockSteer` (e.g. NETosis button).
  */
 export class NeutrophilController {
   private readonly scene: Phaser.Scene;
@@ -23,6 +23,7 @@ export class NeutrophilController {
   private targetX = 0;
   private targetY = 0;
   private hasTarget = false;
+  private inputBlocked: () => boolean = () => false;
 
   constructor(
     scene: Phaser.Scene,
@@ -48,6 +49,16 @@ export class NeutrophilController {
 
   get y(): number {
     return this.body.y;
+  }
+
+  /** True while the player is holding/dragging to steer the neutrophil. */
+  get isSteering(): boolean {
+    return this.hasTarget && this.activePointerId !== null;
+  }
+
+  /** Block steering while intro overlays or other UI pauses gameplay. */
+  setInputBlocked(blocked: () => boolean): void {
+    this.inputBlocked = blocked;
   }
 
   /** Integrate velocity for one frame — toward the held pointer, plus soft chemotaxis. */
@@ -114,6 +125,7 @@ export class NeutrophilController {
   }
 
   private onDown(pointer: Phaser.Input.Pointer): void {
+    if (this.inputBlocked()) return;
     if (!this.inP1Zone(pointer)) return;
     if (this.hitsSteerBlocker(pointer)) return;
     if (this.activePointerId !== null) return;
@@ -122,6 +134,7 @@ export class NeutrophilController {
   }
 
   private onMove(pointer: Phaser.Input.Pointer): void {
+    if (this.inputBlocked()) return;
     if (pointer.id !== this.activePointerId) return;
     if (!this.inP1Zone(pointer) || this.hitsSteerBlocker(pointer)) {
       this.clearTarget();

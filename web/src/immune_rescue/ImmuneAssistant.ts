@@ -1,236 +1,370 @@
 import Phaser from "phaser";
+import { IMMUNE_CONFIG } from "./config";
 
-export interface ColonyPoint {
+export interface NetosisTarget {
   id: number;
   x: number;
   y: number;
+  radius: number;
+}
+
+export interface NetosisHooks {
+  /** All live colonies, nearest to the neutrophil first (fibers travel to targets). */
+  listTargets: (x: number, y: number) => readonly NetosisTarget[];
+  getColonyPosition: (id: number) => { x: number; y: number; radius: number } | null;
+  killColony: (id: number) => boolean;
+}
+
+interface ActiveNet {
+  container: Phaser.GameObjects.Container;
+  life: number;
+}
+
+interface FlyingFiber {
+  targetId: number;
+  headX: number;
+  headY: number;
+  gfx: Phaser.GameObjects.Graphics;
 }
 
 /**
- * Optional AI assistant: highlights a suggested fastest visit order through
- * all live colonies from the neutrophil’s current position.
- *
- * Does not steer or play. Geometry-only (open travel); updates every frame as
- * colonies appear or disappear.
+ * NETosis helper: press to release chromatin fibers from the neutrophil one at a
+ * time — each fiber travels to a bacterium, blooms into a sticky trap, and kills it.
  */
-export class ImmuneAssistant {
+export class NetosisSystem {
   private readonly scene: Phaser.Scene;
   private readonly worldLayer: Phaser.GameObjects.Container;
+  private readonly hooks: NetosisHooks;
 
-  private enabled = false;
-  private toggleBtn!: Phaser.GameObjects.Container;
-  private toggleLabel!: Phaser.GameObjects.Text;
-  private routeGfx!: Phaser.GameObjects.Graphics;
-  private orderLabels: Phaser.GameObjects.Text[] = [];
+  private cooldown = 0;
+  private activeNets: ActiveNet[] = [];
+  private releaseBtn!: Phaser.GameObjects.Container;
+  private releaseLabel!: Phaser.GameObjects.Text;
+  private cooldownRing!: Phaser.GameObjects.Graphics;
 
-  constructor(scene: Phaser.Scene, worldLayer: Phaser.GameObjects.Container) {
+  private salvoQueue: number[] = [];
+  private salvoKilled = 0;
+  private shotGapTimer = 0;
+  private activeFiber: FlyingFiber | null = null;
+  private btnPointerId: number | null = null;
+  private inputBlocked: () => boolean = () => false;
+
+  constructor(scene: Phaser.Scene, worldLayer: Phaser.GameObjects.Container, hooks: NetosisHooks) {
     this.scene = scene;
     this.worldLayer = worldLayer;
-    this.routeGfx = scene.add.graphics().setDepth(9);
-    this.worldLayer.add(this.routeGfx);
-    this.buildToggle();
+    this.hooks = hooks;
+    this.buildButton();
     scene.scale.on("resize", this.layout, this);
     this.layout();
   }
 
-  get isEnabled(): boolean {
-    return this.enabled;
+  get isReady(): boolean {
+    return this.cooldown <= 0 && this.salvoQueue.length === 0 && this.activeFiber === null;
   }
 
-  /**
-   * Redraw the suggested tour: neutrophil → colonies in a short open path
-   * that visits every live colony once (nearest-neighbour + 2-opt).
-   */
-  update(neutrophilX: number, neutrophilY: number, colonies: readonly ColonyPoint[]): void {
-    if (!this.enabled) {
-      this.clearDraw();
-      return;
+  update(dt: number, neutrophilX: number, neutrophilY: number): void {
+    this.cooldown = Math.max(0, this.cooldown - dt);
+    this.refreshButton();
+
+    for (const net of [...this.activeNets]) {
+      net.life -= dt;
+      const t = Phaser.Math.Clamp(net.life / IMMUNE_CONFIG.netosisLifeSeconds, 0, 1);
+      net.container.setAlpha(0.25 + t * 0.55);
+      if (net.life <= 0) {
+        net.container.destroy(true);
+        this.activeNets = this.activeNets.filter((n) => n !== net);
+      }
     }
-    if (colonies.length === 0) {
-      this.clearDraw();
-      return;
+
+    if (this.activeFiber) {
+      this.advanceFiber(dt, neutrophilX, neutrophilY);
+    } else if (this.salvoQueue.length > 0) {
+      this.shotGapTimer -= dt;
+      if (this.shotGapTimer <= 0) {
+        this.launchNextFiber(neutrophilX, neutrophilY);
+      }
     }
-    const order = shortestOpenTour(neutrophilX, neutrophilY, colonies);
-    this.drawTour(neutrophilX, neutrophilY, order);
   }
 
   destroy(): void {
     this.scene.scale.off("resize", this.layout, this);
-    this.clearDraw();
-    this.routeGfx.destroy();
-    this.toggleBtn.destroy(true);
+    this.activeFiber?.gfx.destroy();
+    this.activeFiber = null;
+    for (const net of this.activeNets) net.container.destroy(true);
+    this.activeNets = [];
+    this.releaseBtn.destroy(true);
   }
 
-  private buildToggle(): void {
-    this.toggleBtn = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1520);
-    this.toggleBtn.setData("blockSteer", true);
-    const tg = this.scene.add.graphics();
-    tg.fillStyle(0x0a1420, 0.85);
-    tg.fillRoundedRect(-54, -18, 108, 36, 8);
-    tg.lineStyle(1, 0x4fd1c5, 0.7);
-    tg.strokeRoundedRect(-54, -18, 108, 36, 8);
-    this.toggleBtn.add(tg);
-    this.toggleLabel = this.scene.add
-      .text(0, 0, "AI route", {
+  /** Scene wires neutrophil position into this after button tap. */
+  bindNeutrophilPosition(getPos: () => { x: number; y: number }): void {
+    this.getNeutrophilPos = getPos;
+  }
+
+  /** Block releases while intro overlay or other UI pauses gameplay. */
+  setInputBlocked(blocked: () => boolean): void {
+    this.inputBlocked = blocked;
+  }
+
+  private getNeutrophilPos: () => { x: number; y: number } = () => ({ x: 0, y: 0 });
+
+  tryReleaseAt(x: number, y: number): boolean {
+    if (this.inputBlocked()) return false;
+    if (this.cooldown > 0 || this.salvoQueue.length > 0 || this.activeFiber) return false;
+
+    const targets = this.hooks.listTargets(x, y).slice(0, IMMUNE_CONFIG.netosisMaxTargetsPerSalvo);
+    if (targets.length === 0) {
+      this.flashButtonLabel("No bacteria");
+      return false;
+    }
+
+    this.salvoQueue = targets.map((t) => t.id);
+    this.salvoKilled = 0;
+    this.shotGapTimer = 0;
+    this.cooldown = IMMUNE_CONFIG.netosisCooldownSeconds;
+    this.launchNextFiber(x, y);
+    return true;
+  }
+
+  private launchNextFiber(sourceX: number, sourceY: number): void {
+    while (this.salvoQueue.length > 0) {
+      const targetId = this.salvoQueue.shift()!;
+      if (this.hooks.getColonyPosition(targetId)) {
+        const gfx = this.scene.add.graphics().setDepth(12);
+        this.worldLayer.add(gfx);
+        this.activeFiber = {
+          targetId,
+          headX: sourceX,
+          headY: sourceY,
+          gfx,
+        };
+        return;
+      }
+    }
+    this.finishSalvo();
+  }
+
+  private advanceFiber(dt: number, sourceX: number, sourceY: number): void {
+    const fiber = this.activeFiber;
+    if (!fiber) return;
+
+    const target = this.hooks.getColonyPosition(fiber.targetId);
+    if (!target) {
+      this.clearFiber();
+      this.shotGapTimer = IMMUNE_CONFIG.netosisShotGapSeconds;
+      return;
+    }
+
+    const dx = target.x - fiber.headX;
+    const dy = target.y - fiber.headY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const step = IMMUNE_CONFIG.netosisFiberSpeed * dt;
+    const hitDist = target.radius * 0.55 + 18;
+
+    if (dist <= hitDist) {
+      this.impactAt(target.x, target.y, target.radius, fiber.targetId);
+      return;
+    }
+
+    fiber.headX += (dx / dist) * Math.min(step, dist);
+    fiber.headY += (dy / dist) * Math.min(step, dist);
+    this.drawFiber(fiber, sourceX, sourceY, target.x, target.y);
+  }
+
+  private impactAt(x: number, y: number, colonyRadius: number, targetId: number): void {
+    this.clearFiber();
+    const trapRadius = colonyRadius * IMMUNE_CONFIG.netosisTrapRadiusScale;
+    this.spawnNetVisual(x, y, trapRadius);
+    if (this.hooks.killColony(targetId)) {
+      this.salvoKilled += 1;
+      this.releaseLabel.setText(`AI −${this.salvoKilled}`);
+    }
+    this.shotGapTimer = IMMUNE_CONFIG.netosisShotGapSeconds;
+    if (this.salvoQueue.length === 0 && !this.activeFiber) {
+      this.finishSalvo();
+    }
+  }
+
+  private finishSalvo(): void {
+    if (this.salvoKilled > 0) {
+      this.flashButtonLabel("AI help", 1200);
+    }
+    this.salvoKilled = 0;
+  }
+
+  private flashButtonLabel(text: string, ms = 900): void {
+    this.releaseLabel.setText(text);
+    this.scene.time.delayedCall(ms, () => {
+      if (this.releaseLabel.active) this.releaseLabel.setText("AI help");
+    });
+  }
+
+  private clearFiber(): void {
+    this.activeFiber?.gfx.destroy();
+    this.activeFiber = null;
+  }
+
+  private drawFiber(
+    fiber: FlyingFiber,
+    sourceX: number,
+    sourceY: number,
+    targetX: number,
+    targetY: number,
+  ): void {
+    const gfx = fiber.gfx;
+    gfx.clear();
+
+    // Tether from neutrophil to the traveling granule head.
+    gfx.lineStyle(5, 0xf5eeff, 0.55);
+    gfx.beginPath();
+    gfx.moveTo(sourceX, sourceY);
+    gfx.lineTo(fiber.headX, fiber.headY);
+    gfx.strokePath();
+
+    gfx.lineStyle(2, 0xc8a8ff, 0.45);
+    const wispCount = 4;
+    for (let i = 0; i < wispCount; i++) {
+      const t = (i + 1) / (wispCount + 1);
+      const wx = Phaser.Math.Linear(sourceX, fiber.headX, t);
+      const wy = Phaser.Math.Linear(sourceY, fiber.headY, t);
+      const perp = Math.atan2(fiber.headY - sourceY, fiber.headX - sourceX) + Math.PI / 2;
+      const sway = 14 + i * 4;
+      gfx.lineBetween(wx, wy, wx + Math.cos(perp) * sway, wy + Math.sin(perp) * sway);
+    }
+
+    // Faint aim line toward the bacterium.
+    gfx.lineStyle(1.5, 0xe8d8ff, 0.25);
+    gfx.lineBetween(fiber.headX, fiber.headY, targetX, targetY);
+
+    // Granule head — chromatin + protein bundle leaving the cell.
+    gfx.fillStyle(0xffffff, 0.95);
+    gfx.fillCircle(fiber.headX, fiber.headY, 10);
+    gfx.fillStyle(0xc8a8ff, 0.85);
+    gfx.fillCircle(fiber.headX, fiber.headY, 6);
+  }
+
+  private spawnNetVisual(x: number, y: number, radius: number): void {
+    if (this.activeNets.length >= IMMUNE_CONFIG.netosisMaxActive) {
+      const oldest = this.activeNets.shift();
+      oldest?.container.destroy(true);
+    }
+
+    const container = this.scene.add.container(x, y).setDepth(8);
+    const gfx = this.scene.add.graphics();
+    container.add(gfx);
+    this.worldLayer.add(container);
+
+    const fibrilCount = 18;
+    const fibrils: { ex: number; ey: number }[] = [];
+    for (let i = 0; i < fibrilCount; i++) {
+      const ang = (i / fibrilCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.2;
+      const len = radius * (0.5 + Math.random() * 0.5);
+      fibrils.push({ ex: Math.cos(ang) * len, ey: Math.sin(ang) * len });
+    }
+
+    const drawNet = (scale: number, alpha: number): void => {
+      gfx.clear();
+      gfx.fillStyle(0xe8d8ff, alpha * 0.28);
+      gfx.fillCircle(0, 0, radius * scale);
+
+      gfx.lineStyle(2.5, 0xf5eeff, alpha * 0.8);
+      for (const f of fibrils) {
+        gfx.beginPath();
+        gfx.moveTo(0, 0);
+        gfx.lineTo(f.ex * scale, f.ey * scale);
+        gfx.strokePath();
+      }
+
+      gfx.lineStyle(1.5, 0xc8a8ff, 0.55 * alpha);
+      for (let i = 0; i < fibrils.length; i++) {
+        const a = fibrils[i]!;
+        const b = fibrils[(i + 2) % fibrils.length]!;
+        gfx.lineBetween(a.ex * scale * 0.75, a.ey * scale * 0.75, b.ex * scale * 0.75, b.ey * scale * 0.75);
+      }
+    };
+
+    drawNet(0.08, 0.5);
+    this.scene.tweens.add({
+      targets: { s: 0.08 },
+      s: 1,
+      duration: 320,
+      ease: "Cubic.Out",
+      onUpdate: (_t, target) => drawNet((target as { s: number }).s, 0.9),
+    });
+
+    this.activeNets.push({ container, life: IMMUNE_CONFIG.netosisLifeSeconds });
+  }
+
+  private buildButton(): void {
+    this.releaseBtn = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1520);
+    this.releaseBtn.setData("blockSteer", true);
+
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x1a0a28, 0.9);
+    bg.fillRoundedRect(-62, -22, 124, 44, 10);
+    bg.lineStyle(2, 0xc8a8ff, 0.85);
+    bg.strokeRoundedRect(-62, -22, 124, 44, 10);
+    this.releaseBtn.add(bg);
+
+    this.cooldownRing = this.scene.add.graphics();
+    this.releaseBtn.add(this.cooldownRing);
+
+    this.releaseLabel = this.scene.add
+      .text(0, 0, "AI help", {
         fontFamily: "ui-sans-serif, system-ui",
         fontSize: "14px",
-        color: "#cfd8e8",
+        color: "#f0e8ff",
+        fontStyle: "bold",
       })
       .setOrigin(0.5);
-    this.toggleBtn.add(this.toggleLabel);
-    const hit = this.scene.add
-      .rectangle(0, 0, 108, 36, 0xffffff, 0.001)
-      .setInteractive({ useHandCursor: true });
-    hit.setData("blockSteer", true);
-    hit.on("pointerdown", () => {
-      // Tissue integrity keeps ticking — AI only draws a route hint.
-      this.enabled = !this.enabled;
-      this.toggleLabel.setText(this.enabled ? "AI on" : "AI route");
-      if (!this.enabled) this.clearDraw();
+    this.releaseBtn.add(this.releaseLabel);
+
+    const zone = new Phaser.Geom.Rectangle(-62, -22, 124, 44);
+    this.releaseBtn.setInteractive(zone, Phaser.Geom.Rectangle.Contains);
+    this.releaseBtn.on(
+      "pointerdown",
+      (pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (this.inputBlocked()) return;
+        this.btnPointerId = pointer.id;
+      },
+    );
+    this.releaseBtn.on(
+      "pointerup",
+      (pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.id !== this.btnPointerId) return;
+        this.btnPointerId = null;
+        if (this.inputBlocked()) return;
+        const { x, y } = this.getNeutrophilPos();
+        this.tryReleaseAt(x, y);
+      },
+    );
+    this.releaseBtn.on("pointerupoutside", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.id === this.btnPointerId) this.btnPointerId = null;
     });
-    this.toggleBtn.add(hit);
+  }
+
+  private refreshButton(): void {
+    this.cooldownRing.clear();
+    const busy = this.salvoQueue.length > 0 || this.activeFiber !== null;
+    if (this.cooldown <= 0 && !busy) {
+      this.releaseLabel.setAlpha(1);
+      return;
+    }
+    const frac = this.cooldown > 0 ? this.cooldown / IMMUNE_CONFIG.netosisCooldownSeconds : 0;
+    this.releaseLabel.setAlpha(busy ? 0.65 : 0.55);
+    if (frac > 0) {
+      this.cooldownRing.lineStyle(3, 0xc8a8ff, 0.9);
+      this.cooldownRing.beginPath();
+      this.cooldownRing.arc(0, 0, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac), false);
+      this.cooldownRing.strokePath();
+    }
   }
 
   private layout = (): void => {
-    this.toggleBtn.setPosition(this.scene.scale.width - 70, 40);
+    this.releaseBtn.setPosition(this.scene.scale.width - 78, 88);
   };
-
-  private drawTour(sx: number, sy: number, order: ColonyPoint[]): void {
-    this.clearLabelsOnly();
-    this.routeGfx.clear();
-
-    // Soft spokes to every colony (context), then bold optimal order.
-    this.routeGfx.lineStyle(1.5, 0x4fd1c5, 0.18);
-    for (const c of order) {
-      this.routeGfx.lineBetween(sx, sy, c.x, c.y);
-    }
-
-    this.routeGfx.lineStyle(4, 0xffe060, 0.9);
-    this.routeGfx.beginPath();
-    this.routeGfx.moveTo(sx, sy);
-    for (const c of order) {
-      this.routeGfx.lineTo(c.x, c.y);
-    }
-    this.routeGfx.strokePath();
-
-    // Direction ticks on first leg (next target).
-    if (order.length > 0) {
-      const next = order[0]!;
-      this.routeGfx.fillStyle(0xffe060, 0.95);
-      this.routeGfx.fillCircle(next.x, next.y, 10);
-      this.drawArrowHead(sx, sy, next.x, next.y);
-    }
-
-    for (let i = 0; i < order.length; i++) {
-      const c = order[i]!;
-      const label = this.scene.add
-        .text(c.x, c.y - 28, String(i + 1), {
-          fontFamily: "ui-sans-serif, system-ui",
-          fontSize: "16px",
-          color: "#0a1208",
-          backgroundColor: "#ffe060",
-          padding: { x: 5, y: 2 },
-          fontStyle: "bold",
-        })
-        .setOrigin(0.5)
-        .setDepth(10);
-      this.worldLayer.add(label);
-      this.orderLabels.push(label);
-    }
-  }
-
-  private drawArrowHead(x0: number, y0: number, x1: number, y1: number): void {
-    const ang = Math.atan2(y1 - y0, x1 - x0);
-    const len = 16;
-    const ax = x1 - Math.cos(ang) * 18;
-    const ay = y1 - Math.sin(ang) * 18;
-    this.routeGfx.fillStyle(0xffe060, 0.95);
-    this.routeGfx.fillTriangle(
-      x1,
-      y1,
-      ax + Math.cos(ang + 2.5) * len,
-      ay + Math.sin(ang + 2.5) * len,
-      ax + Math.cos(ang - 2.5) * len,
-      ay + Math.sin(ang - 2.5) * len,
-    );
-  }
-
-  private clearLabelsOnly(): void {
-    for (const t of this.orderLabels) t.destroy();
-    this.orderLabels = [];
-  }
-
-  private clearDraw(): void {
-    this.routeGfx.clear();
-    this.clearLabelsOnly();
-  }
 }
 
-/** Nearest-neighbour open tour from start, improved with 2-opt. */
-export function shortestOpenTour(
-  startX: number,
-  startY: number,
-  colonies: readonly ColonyPoint[],
-): ColonyPoint[] {
-  if (colonies.length === 0) return [];
-  if (colonies.length === 1) return [colonies[0]!];
-
-  const remaining = [...colonies];
-  const tour: ColonyPoint[] = [];
-  let cx = startX;
-  let cy = startY;
-  while (remaining.length > 0) {
-    let bestI = 0;
-    let bestD = Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const p = remaining[i]!;
-      const d = (p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy);
-      if (d < bestD) {
-        bestD = d;
-        bestI = i;
-      }
-    }
-    const next = remaining.splice(bestI, 1)[0]!;
-    tour.push(next);
-    cx = next.x;
-    cy = next.y;
-  }
-
-  return twoOptOpen(startX, startY, tour);
-}
-
-function pathLength(startX: number, startY: number, tour: ColonyPoint[]): number {
-  let len = 0;
-  let px = startX;
-  let py = startY;
-  for (const p of tour) {
-    len += Math.hypot(p.x - px, p.y - py);
-    px = p.x;
-    py = p.y;
-  }
-  return len;
-}
-
-/** 2-opt for an open path (start fixed outside the tour). */
-function twoOptOpen(startX: number, startY: number, tour: ColonyPoint[]): ColonyPoint[] {
-  const path = [...tour];
-  let improved = true;
-  let guard = 0;
-  while (improved && guard++ < 40) {
-    improved = false;
-    const best = pathLength(startX, startY, path);
-    for (let i = 0; i < path.length - 1; i++) {
-      for (let k = i + 1; k < path.length; k++) {
-        const trial = path.slice(0, i).concat(path.slice(i, k + 1).reverse(), path.slice(k + 1));
-        const len = pathLength(startX, startY, trial);
-        if (len + 0.01 < best) {
-          for (let t = 0; t < path.length; t++) path[t] = trial[t]!;
-          improved = true;
-          break;
-        }
-      }
-      if (improved) break;
-    }
-  }
-  return path;
-}
+/** @deprecated Use NetosisSystem — kept for import stability during transition. */
+export const ImmuneAssistant = NetosisSystem;

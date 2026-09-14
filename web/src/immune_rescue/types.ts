@@ -13,6 +13,8 @@ export interface Colony {
   radius: number;
   size: number;
   replicateTimer: number;
+  /** Heading for ambient bacterial drift (radians). */
+  wanderAngle: number;
   /** Runtime Phaser container; typed loosely to avoid pulling Phaser into this module. */
   visual: { destroy: (fromScene?: boolean) => void; setPosition?: (x: number, y: number) => void } | null;
 }

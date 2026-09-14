@@ -148,7 +148,7 @@ export class ImmuneModeSelectScene extends Phaser.Scene {
     const play = this.add
       .rectangle(0, ch * 0.32, Math.min(160, cw * 0.55), 40, 0x4fd1c5, 0.95)
       .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => this.startMode(mode));
+      .on("pointerup", () => this.startMode(mode));
     card.add(play);
     card.add(
       this.add

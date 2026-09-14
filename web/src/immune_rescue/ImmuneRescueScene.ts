@@ -5,7 +5,8 @@ import { ChemotaxisField } from "./ChemotaxisField";
 import { NeutrophilController } from "./NeutrophilController";
 import { BacterialSystem } from "./BacterialSystem";
 import { TissueHud } from "./TissueHud";
-import { ImmuneAssistant } from "./ImmuneAssistant";
+import { ImmuneIntroOverlay } from "./ImmuneIntroOverlay";
+import { NetosisSystem } from "./ImmuneAssistant";
 import { HeatOverlay } from "../visuals/heatOverlay";
 import { buildNeutrophilAt } from "../visuals/creature";
 import { addTissueBackground, zoomTissueToFill, viewportSize } from "./assets";
@@ -27,7 +28,9 @@ export class ImmuneRescueScene extends Phaser.Scene {
   private controller!: NeutrophilController;
   private bacteria!: BacterialSystem;
   private hud!: TissueHud;
-  private assistant!: ImmuneAssistant;
+  private netosis!: NetosisSystem;
+  private intro: ImmuneIntroOverlay | null = null;
+  private pausedForIntro = false;
   /** Uniform fit scale so the whole playfield stays on-screen. */
   private worldScale = 1;
   private resizeTimer: Phaser.Time.TimerEvent | null = null;
@@ -53,6 +56,7 @@ export class ImmuneRescueScene extends Phaser.Scene {
 
   create(): void {
     const { w, h } = viewportSize(this);
+    this.pausedForIntro = this.mode === "single";
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.setZoom(1);
 
@@ -93,8 +97,25 @@ export class ImmuneRescueScene extends Phaser.Scene {
       this.mode,
       (sx, sy) => this.screenToWorld(sx, sy),
     );
+    this.controller.setInputBlocked(() => this.pausedForIntro);
     this.hud = new TissueHud(this, this.mode);
-    this.assistant = new ImmuneAssistant(this, this.worldLayer);
+    this.netosis = new NetosisSystem(this, this.worldLayer, {
+      listTargets: (x, y) => this.bacteria.coloniesForNetosis(x, y),
+      getColonyPosition: (id) => this.bacteria.getColonyPosition(id),
+      killColony: (id) => this.bacteria.netosisKillColony(id),
+    });
+    this.netosis.bindNeutrophilPosition(() => ({
+      x: this.controller.x,
+      y: this.controller.y,
+    }));
+    this.netosis.setInputBlocked(() => this.pausedForIntro);
+
+    if (this.mode === "single") {
+      this.intro = new ImmuneIntroOverlay(this, () => {
+        this.pausedForIntro = false;
+        this.intro = null;
+      });
+    }
 
     this.makeBackButton();
     this.scale.on("resize", this.scheduleResize, this);
@@ -104,7 +125,7 @@ export class ImmuneRescueScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
-    if (this.done) return;
+    if (this.done || this.pausedForIntro) return;
     const dt = Math.min(0.05, deltaMs / 1000);
 
     this.controller.update(dt);
@@ -119,6 +140,7 @@ export class ImmuneRescueScene extends Phaser.Scene {
       this.controller.x,
       this.controller.y,
       IMMUNE_CONFIG.neutrophilRadius,
+      this.controller.isSteering,
     );
 
     this.hud.applyDamage(this.bacteria.infectionPressure() * dt);
@@ -128,7 +150,7 @@ export class ImmuneRescueScene extends Phaser.Scene {
       this.bacteria.colonyCount,
     );
 
-    this.assistant.update(this.controller.x, this.controller.y, this.bacteria.listColonies());
+    this.netosis.update(dt, this.controller.x, this.controller.y);
 
     if (this.bacteria.engulfedCount >= IMMUNE_CONFIG.winEngulfCount) {
       this.handleWin();
@@ -144,7 +166,8 @@ export class ImmuneRescueScene extends Phaser.Scene {
     this.controller?.destroy();
     this.bacteria?.destroy();
     this.hud?.destroy();
-    this.assistant?.destroy();
+    this.netosis?.destroy();
+    this.intro?.destroy();
     this.heatOverlay?.destroy();
     this.chemotaxis?.destroy();
     this.winOverlay?.destroy();
