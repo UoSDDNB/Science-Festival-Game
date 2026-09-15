@@ -4,6 +4,8 @@ import { LevelSelectScene } from "./scenes/LevelSelectScene";
 import { LevelScene } from "./scenes/LevelScene";
 import { ArcadeSelectScene } from "./arcade/ArcadeSelectScene";
 import { GAME_SCENES } from "./arcade/registry";
+import { ImmuneModeSelectScene } from "./immune_rescue/ImmuneModeSelectScene";
+import { ImmuneRescueScene } from "./immune_rescue/ImmuneRescueScene";
 import { WORLD_WIDTH, WORLD_HEIGHT } from "./types";
 
 /**
@@ -31,7 +33,7 @@ const config: Phaser.Types.Core.GameConfig = {
     roundPixels: false,
   },
   fps: { target: 60, forceSetTimeOut: false },
-  scene: [BootScene, LevelSelectScene, LevelScene, ArcadeSelectScene, ...GAME_SCENES],
+  scene: [BootScene, LevelSelectScene, LevelScene, ArcadeSelectScene, ImmuneModeSelectScene, ImmuneRescueScene, ...GAME_SCENES],
 };
 
 const game = new Phaser.Game(config);

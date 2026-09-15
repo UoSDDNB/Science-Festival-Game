@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { LevelDef } from "../types";
 import { hexToInt } from "./palette";
+import { neutrophilDisplaySize } from "../immune_rescue/assets";
 
 /**
  * Procedural creature silhouettes. Stylised, flat, intentionally low-effort —
@@ -380,4 +381,74 @@ function buildNeutrophil(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
 
 function clamp(x: number, lo: number, hi: number): number {
   return x < lo ? lo : x > hi ? hi : x;
+}
+
+/**
+ * Standalone neutrophil builder for Immune Rescue (no LevelDef required).
+ * Uses the `immune-neutrophil` PNG when loaded; falls back to procedural art.
+ * Display size is fixed by `neutrophilDisplaySize` — never call setScale on the
+ * sprite (source texture is very large and setScale(1) blows it up).
+ */
+export function buildNeutrophilAt(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  size: number,
+  skinHex: string,
+  accentHex: string,
+): CreatureVisual {
+  const c = scene.add.container(x, y);
+  c.setDepth(6);
+  const s = size;
+  const baseDisplay = neutrophilDisplaySize(s);
+
+  let sprite: Phaser.GameObjects.Image | null = null;
+  let graphics: Phaser.GameObjects.Graphics | null = null;
+
+  if (scene.textures.exists("immune-neutrophil")) {
+    sprite = scene.add.image(0, 0, "immune-neutrophil");
+    sprite.setDisplaySize(baseDisplay, baseDisplay);
+    c.add(sprite);
+  } else {
+    const skin = hexToInt(skinHex);
+    const accent = hexToInt(accentHex);
+    graphics = scene.add.graphics();
+    const r = baseDisplay;
+    graphics.fillStyle(skin, 0.95);
+    graphics.fillEllipse(0, 0, r, r * 0.9);
+    graphics.fillStyle(accent, 0.9);
+    graphics.fillEllipse(-r * 0.2, 0, r * 0.35, r * 0.28);
+    graphics.fillEllipse(r * 0.05, r * 0.08, r * 0.32, r * 0.26);
+    graphics.fillEllipse(r * 0.25, -r * 0.08, r * 0.28, r * 0.24);
+    c.add(graphics);
+  }
+
+  const heart = scene.add.image(0, 0, "glow-warm");
+  heart.setBlendMode(Phaser.BlendModes.ADD);
+  heart.setAlpha(0);
+  heart.setDisplaySize(baseDisplay * 0.9, baseDisplay * 0.9);
+  c.add(heart);
+
+  let beat = 0;
+  return {
+    container: c,
+    setLifeSignal: (t: number) => {
+      beat += 0.05;
+      const tt = clamp(t, 0, 1);
+      const p = Math.pow(Math.max(0, Math.sin(beat * (1 + tt * 3))), 0.4);
+      heart.setAlpha(tt * 0.9 * (0.6 + 0.4 * p));
+      const glow = baseDisplay * (0.85 + p * 0.15 + tt * 0.1);
+      heart.setDisplaySize(glow, glow);
+      // Pulse via display size only — never setScale on huge source textures.
+      const pulse = baseDisplay * (1 + tt * 0.02 + p * 0.01 * tt);
+      if (sprite) sprite.setDisplaySize(pulse, pulse);
+      else if (graphics) graphics.setScale(pulse / baseDisplay);
+    },
+    iceDissolve: () => {
+      // not iced
+    },
+    setThawed: () => {
+      // handled by the level (reach win) — no state change needed
+    },
+  };
 }
