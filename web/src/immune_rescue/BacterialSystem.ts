@@ -18,6 +18,9 @@ export class BacterialSystem {
   private readonly worldLayer: Phaser.GameObjects.Container;
   private readonly toWorld: ScreenToWorld;
 
+  /** World-space Y limit for spawns and drift (matches visible play band). */
+  private worldBottomY: number = IMMUNE_CONFIG.worldHeight;
+
   private colonies: Colony[] = [];
   private decoys: Decoy[] = [];
   private nextId = 1;
@@ -60,6 +63,20 @@ export class BacterialSystem {
 
   get winTarget(): number {
     return IMMUNE_CONFIG.winEngulfCount;
+  }
+
+  /** Called on resize so bacteria stay inside the on-screen playfield. */
+  setWorldBottom(worldBottomY: number): void {
+    this.worldBottomY = Math.max(160, worldBottomY);
+    const margin = 80;
+    for (const colony of this.colonies) {
+      colony.y = Phaser.Math.Clamp(colony.y, margin, this.worldBottomY - margin);
+      colony.visual?.setPosition?.(colony.x, colony.y);
+    }
+  }
+
+  getWorldBottom(): number {
+    return this.worldBottomY;
   }
 
   /** Live colony positions (e.g. for debugging or future helpers). */
@@ -131,7 +148,7 @@ export class BacterialSystem {
       }
 
       colony.x = Phaser.Math.Clamp(colony.x, margin, IMMUNE_CONFIG.worldWidth - margin);
-      colony.y = Phaser.Math.Clamp(colony.y, margin, IMMUNE_CONFIG.worldHeight - margin);
+      colony.y = Phaser.Math.Clamp(colony.y, margin, this.worldBottomY - margin);
       colony.visual?.setPosition?.(colony.x, colony.y);
 
       colony.replicateTimer += dt;
@@ -224,8 +241,8 @@ export class BacterialSystem {
     return colony ? { x: colony.x, y: colony.y, radius: colony.radius } : null;
   }
 
-  /** Kill one colony after a NET fiber arrives — counts toward win target. */
-  netosisKillColony(id: number): boolean {
+  /** Destroy one colony after a NET fiber arrives — counts toward win target. */
+  netosisDestroyColony(id: number): boolean {
     const colony = this.colonies.find((c) => c.id === id);
     if (!colony) return false;
     const { x, y } = colony;
@@ -287,7 +304,7 @@ export class BacterialSystem {
       this.mode === "single" ? IMMUNE_CONFIG.maxColoniesOnScreen : IMMUNE_CONFIG.maxColonies;
     if (this.colonies.length >= cap) return null;
     const cx = Phaser.Math.Clamp(x, 80, IMMUNE_CONFIG.worldWidth - 80);
-    const cy = Phaser.Math.Clamp(y, 80, IMMUNE_CONFIG.worldHeight - 80);
+    const cy = Phaser.Math.Clamp(y, 80, this.worldBottomY - 80);
     const radius = IMMUNE_CONFIG.colonyBaseRadius * size;
     const visual = this.drawColony(cx, cy, radius);
     const colony: Colony = {
@@ -342,7 +359,7 @@ export class BacterialSystem {
     if (this.p2DecoyCooldown > 0) return;
     if (this.decoys.length >= IMMUNE_CONFIG.maxDecoys) return;
     const x = Phaser.Math.Clamp(worldX, 60, IMMUNE_CONFIG.worldWidth - 60);
-    const y = Phaser.Math.Clamp(worldY, 60, IMMUNE_CONFIG.worldHeight - 60);
+    const y = Phaser.Math.Clamp(worldY, 60, this.worldBottomY - 60);
     const visual = this.drawDecoy(x, y);
     const decoy: Decoy = {
       id: this.nextId++,
@@ -433,6 +450,8 @@ export class BacterialSystem {
   }
 
   private randomEdgeY(): number {
-    return 120 + Math.random() * (IMMUNE_CONFIG.worldHeight - 240);
+    const top = 120;
+    const bottom = Math.max(top + 80, this.worldBottomY - 120);
+    return top + Math.random() * (bottom - top);
   }
 }

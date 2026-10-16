@@ -12,7 +12,7 @@ export interface NetosisHooks {
   /** All live colonies, nearest to the neutrophil first (fibers travel to targets). */
   listTargets: (x: number, y: number) => readonly NetosisTarget[];
   getColonyPosition: (id: number) => { x: number; y: number; radius: number } | null;
-  killColony: (id: number) => boolean;
+  destroyColony: (id: number) => boolean;
 }
 
 interface ActiveNet {
@@ -29,7 +29,7 @@ interface FlyingFiber {
 
 /**
  * NETosis helper: press to release chromatin fibers from the neutrophil one at a
- * time — each fiber travels to a bacterium, blooms into a sticky trap, and kills it.
+ * time — each fiber travels to a bacterium, blooms into a sticky trap, and destroys it.
  */
 export class NetosisSystem {
   private readonly scene: Phaser.Scene;
@@ -40,10 +40,17 @@ export class NetosisSystem {
   private activeNets: ActiveNet[] = [];
   private releaseBtn!: Phaser.GameObjects.Container;
   private releaseLabel!: Phaser.GameObjects.Text;
-  private cooldownRing!: Phaser.GameObjects.Graphics;
+  private btnBg!: Phaser.GameObjects.Graphics;
+
+  private btnHalfW = 110;
+  private btnHalfH = 40;
+  private btnLabelSize = 22;
+  private btnCountdownSize = 36;
+  private labelFlashTimer: Phaser.Time.TimerEvent | null = null;
+  private chromeTop = 88;
 
   private salvoQueue: number[] = [];
-  private salvoKilled = 0;
+  private salvoDestroyed = 0;
   private shotGapTimer = 0;
   private activeFiber: FlyingFiber | null = null;
   private btnPointerId: number | null = null;
@@ -54,7 +61,11 @@ export class NetosisSystem {
     this.worldLayer = worldLayer;
     this.hooks = hooks;
     this.buildButton();
-    scene.scale.on("resize", this.layout, this);
+  }
+
+  /** Called by ImmuneRescueScene so the button stays inside the top HUD band. */
+  layoutInChrome(chromeTop: number): void {
+    this.chromeTop = chromeTop;
     this.layout();
   }
 
@@ -87,7 +98,7 @@ export class NetosisSystem {
   }
 
   destroy(): void {
-    this.scene.scale.off("resize", this.layout, this);
+    this.labelFlashTimer?.remove(false);
     this.activeFiber?.gfx.destroy();
     this.activeFiber = null;
     for (const net of this.activeNets) net.container.destroy(true);
@@ -118,7 +129,7 @@ export class NetosisSystem {
     }
 
     this.salvoQueue = targets.map((t) => t.id);
-    this.salvoKilled = 0;
+    this.salvoDestroyed = 0;
     this.shotGapTimer = 0;
     this.cooldown = IMMUNE_CONFIG.netosisCooldownSeconds;
     this.launchNextFiber(x, y);
@@ -174,9 +185,8 @@ export class NetosisSystem {
     this.clearFiber();
     const trapRadius = colonyRadius * IMMUNE_CONFIG.netosisTrapRadiusScale;
     this.spawnNetVisual(x, y, trapRadius);
-    if (this.hooks.killColony(targetId)) {
-      this.salvoKilled += 1;
-      this.releaseLabel.setText(`AI −${this.salvoKilled}`);
+    if (this.hooks.destroyColony(targetId)) {
+      this.salvoDestroyed += 1;
     }
     this.shotGapTimer = IMMUNE_CONFIG.netosisShotGapSeconds;
     if (this.salvoQueue.length === 0 && !this.activeFiber) {
@@ -185,16 +195,16 @@ export class NetosisSystem {
   }
 
   private finishSalvo(): void {
-    if (this.salvoKilled > 0) {
-      this.flashButtonLabel("AI help", 1200);
-    }
-    this.salvoKilled = 0;
+    this.salvoDestroyed = 0;
+    this.refreshButton();
   }
 
   private flashButtonLabel(text: string, ms = 900): void {
+    this.labelFlashTimer?.remove(false);
     this.releaseLabel.setText(text);
-    this.scene.time.delayedCall(ms, () => {
-      if (this.releaseLabel.active) this.releaseLabel.setText("AI help");
+    this.labelFlashTimer = this.scene.time.delayedCall(ms, () => {
+      this.labelFlashTimer = null;
+      if (this.releaseLabel.active) this.refreshButton();
     });
   }
 
@@ -298,27 +308,24 @@ export class NetosisSystem {
     this.releaseBtn = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1520);
     this.releaseBtn.setData("blockSteer", true);
 
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(0x1a0a28, 0.9);
-    bg.fillRoundedRect(-62, -22, 124, 44, 10);
-    bg.lineStyle(2, 0xc8a8ff, 0.85);
-    bg.strokeRoundedRect(-62, -22, 124, 44, 10);
-    this.releaseBtn.add(bg);
+    const btnW = this.btnHalfW * 2;
+    const btnH = this.btnHalfH * 2;
 
-    this.cooldownRing = this.scene.add.graphics();
-    this.releaseBtn.add(this.cooldownRing);
+    this.btnBg = this.scene.add.graphics();
+    this.drawButtonBg(false);
+    this.releaseBtn.add(this.btnBg);
 
     this.releaseLabel = this.scene.add
       .text(0, 0, "AI help", {
         fontFamily: "ui-sans-serif, system-ui",
-        fontSize: "14px",
+        fontSize: `${this.btnLabelSize}px`,
         color: "#f0e8ff",
         fontStyle: "bold",
       })
       .setOrigin(0.5);
     this.releaseBtn.add(this.releaseLabel);
 
-    const zone = new Phaser.Geom.Rectangle(-62, -22, 124, 44);
+    const zone = new Phaser.Geom.Rectangle(-this.btnHalfW, -this.btnHalfH, btnW, btnH);
     this.releaseBtn.setInteractive(zone, Phaser.Geom.Rectangle.Contains);
     this.releaseBtn.on(
       "pointerdown",
@@ -344,26 +351,80 @@ export class NetosisSystem {
     });
   }
 
+  private drawButtonBg(ready: boolean): void {
+    const hw = this.btnHalfW;
+    const hh = this.btnHalfH;
+    const btnW = hw * 2;
+    const btnH = hh * 2;
+    this.btnBg.clear();
+    this.btnBg.fillStyle(0x1a0a28, ready ? 0.92 : 0.78);
+    this.btnBg.fillRoundedRect(-hw, -hh, btnW, btnH, 14);
+    this.btnBg.lineStyle(2, 0xc8a8ff, ready ? 0.9 : 0.5);
+    this.btnBg.strokeRoundedRect(-hw, -hh, btnW, btnH, 14);
+  }
+
   private refreshButton(): void {
-    this.cooldownRing.clear();
+    if (this.labelFlashTimer) return;
+
     const busy = this.salvoQueue.length > 0 || this.activeFiber !== null;
-    if (this.cooldown <= 0 && !busy) {
-      this.releaseLabel.setAlpha(1);
+
+    if (this.cooldown > 0) {
+      const secs = Math.max(1, Math.ceil(this.cooldown));
+      this.releaseLabel.setText(String(secs));
+      this.releaseLabel.setFontSize(this.btnCountdownSize);
+      this.releaseLabel.setAlpha(0.9);
+      this.drawButtonBg(false);
       return;
     }
-    const frac = this.cooldown > 0 ? this.cooldown / IMMUNE_CONFIG.netosisCooldownSeconds : 0;
-    this.releaseLabel.setAlpha(busy ? 0.65 : 0.55);
-    if (frac > 0) {
-      this.cooldownRing.lineStyle(3, 0xc8a8ff, 0.9);
-      this.cooldownRing.beginPath();
-      this.cooldownRing.arc(0, 0, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac), false);
-      this.cooldownRing.strokePath();
+
+    this.releaseLabel.setText("AI help");
+    this.releaseLabel.setFontSize(this.btnLabelSize);
+
+    if (busy) {
+      this.releaseLabel.setAlpha(0.65);
+      this.drawButtonBg(false);
+      return;
     }
+
+    this.releaseLabel.setAlpha(1);
+    this.drawButtonBg(true);
   }
 
   private layout = (): void => {
-    this.releaseBtn.setPosition(this.scene.scale.width - 78, 88);
+    const w = this.scene.scale.width;
+    const h = this.scene.scale.height;
+    const isShort = h < 520;
+    const margin = Math.round(isShort ? 8 : 12);
+    const scale = Phaser.Math.Clamp(Math.min(w / 390, h / 844), 0.42, 1.35);
+    if (isShort) {
+      this.btnHalfW = Math.round(88 * scale);
+      this.btnHalfH = Math.round(30 * scale);
+    } else {
+      this.btnHalfW = Math.round(110 * scale);
+      this.btnHalfH = Math.round(40 * scale);
+    }
+    this.btnLabelSize = Math.max(18, Math.min(26, Math.round(22 * scale)));
+    this.btnCountdownSize = Math.max(26, Math.min(42, Math.round(34 * scale)));
+
+    const btnY = Math.min(this.chromeTop - this.btnHalfH - margin, this.btnHalfH + margin);
+    this.releaseBtn.setPosition(w - this.btnHalfW - margin, Math.max(this.btnHalfH + margin, btnY));
+    this.redrawButtonBg();
+    this.refreshButton();
   };
+
+  private redrawButtonBg(): void {
+    const hw = this.btnHalfW;
+    const hh = this.btnHalfH;
+    const ready = this.cooldown <= 0 && this.salvoQueue.length === 0 && this.activeFiber === null;
+    this.btnBg.clear();
+    this.btnBg.fillStyle(0x1a0a28, ready ? 0.92 : 0.78);
+    this.btnBg.fillRoundedRect(-hw, -hh, hw * 2, hh * 2, 14);
+    this.btnBg.lineStyle(2, 0xc8a8ff, ready ? 0.9 : 0.5);
+    this.btnBg.strokeRoundedRect(-hw, -hh, hw * 2, hh * 2, 14);
+
+    const zone = new Phaser.Geom.Rectangle(-hw, -hh, hw * 2, hh * 2);
+    this.releaseBtn.setInteractive(zone, Phaser.Geom.Rectangle.Contains);
+  }
 }
 
 /** @deprecated Use NetosisSystem — kept for import stability during transition. */

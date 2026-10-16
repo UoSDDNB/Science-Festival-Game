@@ -20,7 +20,7 @@
     "accent": "#ff6a8a"
   },
   "fire": { "x": 380, "y": 720, "tapRadius": 220, "kind": "pollen" },
-  "creature": { "x": 3050, "y": 560, "kind": "mast_cell", "size": 1.5 },
+  "creature": { "x": 3305, "y": 500, "kind": "mast_cell", "size": 1.5 },
   "sim": {
     "diffusion": 0.07,
     "dissipation": 0.012,

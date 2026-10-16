@@ -21,7 +21,13 @@ export class WinOverlay {
     this.scene = scene;
     const w = scene.scale.width;
     const h = scene.scale.height;
-    this.L = computeResultLayout(w, h, false);
+    this.L = computeResultLayout(
+      scene,
+      w,
+      h,
+      false,
+      { title: def.win.title, body: def.win.body, biology: def.win.biologyLine },
+    );
 
     this.veil = scene.add
       .rectangle(0, 0, w, h, 0x000000, 0)
@@ -37,9 +43,9 @@ export class WinOverlay {
     const { cardW, cardH, wrap } = this.L;
     const card = scene.add.graphics();
     card.fillStyle(0x0c1322, 0.92);
-    card.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 18);
+    card.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, this.L.radius);
     card.lineStyle(2, 0xffd060, 0.6);
-    card.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 18);
+    card.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, this.L.radius);
     container.add(card);
 
     const title = scene.add
@@ -75,8 +81,18 @@ export class WinOverlay {
       .setOrigin(0.5, 0.5);
     container.add(biology);
 
-    const btnReplay = this.makeButton(-this.L.btnW / 2 - 6, this.L.btnY, "Play Again", onReplay);
-    const btnMenu = this.makeButton(this.L.btnW / 2 + 6, this.L.btnY, "Menu", onMenu);
+    const btnReplay = this.makeButton(
+      this.L.stackButtons ? 0 : -this.L.btnW / 2 - 6,
+      this.L.stackButtons ? this.L.btnY : this.L.btnY,
+      "Play Again",
+      onReplay,
+    );
+    const btnMenu = this.makeButton(
+      this.L.stackButtons ? 0 : this.L.btnW / 2 + 6,
+      this.L.stackButtons ? this.L.btnY2 : this.L.btnY,
+      "Menu",
+      onMenu,
+    );
     container.add(btnReplay);
     container.add(btnMenu);
 
@@ -97,7 +113,7 @@ export class WinOverlay {
     const t = this.scene.add
       .text(0, 0, text, {
         fontFamily: "ui-sans-serif, system-ui",
-        fontSize: "18px",
+        fontSize: `${this.L.btnFontSize}px`,
         color: "#e6eef8",
       })
       .setOrigin(0.5, 0.5);

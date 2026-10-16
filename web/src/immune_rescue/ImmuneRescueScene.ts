@@ -2,9 +2,9 @@ import Phaser from "phaser";
 import { ImmuneLaunchData, ImmuneMode } from "./types";
 import { IMMUNE_CONFIG, IMMUNE_FAIL, IMMUNE_PALETTE, IMMUNE_WIN } from "./config";
 import { ChemotaxisField } from "./ChemotaxisField";
-import { NeutrophilController } from "./NeutrophilController";
+import { NeutrophilController, type MovementClamp } from "./NeutrophilController";
 import { BacterialSystem } from "./BacterialSystem";
-import { TissueHud } from "./TissueHud";
+import { TissueHud, computeImmuneHudLayout } from "./TissueHud";
 import { ImmuneIntroOverlay } from "./ImmuneIntroOverlay";
 import { NetosisSystem } from "./ImmuneAssistant";
 import { HeatOverlay } from "../visuals/heatOverlay";
@@ -31,8 +31,12 @@ export class ImmuneRescueScene extends Phaser.Scene {
   private netosis!: NetosisSystem;
   private intro: ImmuneIntroOverlay | null = null;
   private pausedForIntro = false;
-  /** Uniform fit scale so the whole playfield stays on-screen. */
-  private worldScale = 1;
+  /** World → screen scale (may differ slightly to fill the play band). */
+  private worldScaleX = 1;
+  private worldScaleY = 1;
+  private playTop = 0;
+  private playHeight = 600;
+  private worldBottom: number = IMMUNE_CONFIG.worldHeight;
   private resizeTimer: Phaser.Time.TimerEvent | null = null;
   private done = false;
   private winOverlay: WinOverlay | null = null;
@@ -96,13 +100,14 @@ export class ImmuneRescueScene extends Phaser.Scene {
       this.chemotaxis,
       this.mode,
       (sx, sy) => this.screenToWorld(sx, sy),
+      () => this.movementClamp(),
     );
     this.controller.setInputBlocked(() => this.pausedForIntro);
     this.hud = new TissueHud(this, this.mode);
     this.netosis = new NetosisSystem(this, this.worldLayer, {
       listTargets: (x, y) => this.bacteria.coloniesForNetosis(x, y),
       getColonyPosition: (id) => this.bacteria.getColonyPosition(id),
-      killColony: (id) => this.bacteria.netosisKillColony(id),
+      destroyColony: (id) => this.bacteria.netosisDestroyColony(id),
     });
     this.netosis.bindNeutrophilPosition(() => ({
       x: this.controller.x,
@@ -120,7 +125,6 @@ export class ImmuneRescueScene extends Phaser.Scene {
     this.makeBackButton();
     this.scale.on("resize", this.scheduleResize, this);
     window.addEventListener("orientationchange", this.onOrientationChange);
-    this.input.keyboard?.on("keydown-ESC", () => this.scene.start("level-select"));
     this.handleResize();
   }
 
@@ -188,24 +192,62 @@ export class ImmuneRescueScene extends Phaser.Scene {
     // Re-zoom tissue to cover whatever screen the player is on.
     zoomTissueToFill(this.tissueBg, w, h);
 
-    // Fit the 1920×1080 playfield inside the screen (letterbox if needed).
-    this.worldScale = Math.min(w / IMMUNE_CONFIG.worldWidth, h / IMMUNE_CONFIG.worldHeight);
-    const ox = (w - IMMUNE_CONFIG.worldWidth * this.worldScale) / 2;
-    const oy = (h - IMMUNE_CONFIG.worldHeight * this.worldScale) / 2;
-    this.worldLayer.setScale(this.worldScale);
-    this.worldLayer.setPosition(ox, oy);
+    const hudLayout = computeImmuneHudLayout(this, w, h, this.mode);
+    this.hud.applyLayout(hudLayout);
+    this.netosis.layoutInChrome(hudLayout.chromeTop);
+
+    // Fill the play band edge-to-edge; steering maps across the full height and width.
+    const availH = Math.max(1, h - hudLayout.chromeTop - hudLayout.chromeBottom);
+    this.playTop = hudLayout.chromeTop;
+    this.playHeight = availH;
+    this.worldScaleX = w / IMMUNE_CONFIG.worldWidth;
+    this.worldScaleY = availH / IMMUNE_CONFIG.worldHeight;
+    this.worldBottom = IMMUNE_CONFIG.worldHeight;
+    this.worldLayer.setScale(this.worldScaleX, this.worldScaleY);
+    this.worldLayer.setPosition(0, this.playTop);
+    this.bacteria.setWorldBottom(this.worldBottom);
+    const clamp = this.movementClamp();
+    this.neutrophil.container.x = Phaser.Math.Clamp(
+      this.neutrophil.container.x,
+      clamp.minX,
+      clamp.maxX,
+    );
+    this.neutrophil.container.y = Phaser.Math.Clamp(
+      this.neutrophil.container.y,
+      clamp.minY,
+      clamp.maxY,
+    );
   };
 
+  private movementClamp(): MovementClamp {
+    const edge = 36;
+    return {
+      minX: edge,
+      maxX: IMMUNE_CONFIG.worldWidth - edge,
+      minY: edge,
+      maxY: this.worldBottom - edge,
+    };
+  }
+
+  /** Map screen touches across the full play band. */
   private screenToWorld(sx: number, sy: number): [number, number] {
-    const wx = (sx - this.worldLayer.x) / this.worldScale;
-    const wy = (sy - this.worldLayer.y) / this.worldScale;
-    return [wx, wy];
+    const nx = Phaser.Math.Clamp(sx / Math.max(1, this.scale.width), 0, 1);
+    const ny = Phaser.Math.Clamp((sy - this.playTop) / Math.max(1, this.playHeight), 0, 1);
+    const { minX, maxX, minY, maxY } = this.movementClamp();
+    return [
+      Phaser.Math.Clamp(nx * IMMUNE_CONFIG.worldWidth, minX, maxX),
+      Phaser.Math.Clamp(ny * this.worldBottom, minY, maxY),
+    ];
   }
 
   /** Expose for BacterialSystem two-player taps after camera transform. */
   getWorldPoint(sx: number, sy: number): [number, number] {
     return this.screenToWorld(sx, sy);
   }
+
+  private restartLevel = (): void => {
+    this.scene.start("immune-rescue", { mode: "single" });
+  };
 
   private makeBackButton(): void {
     const btn = this.add.container(80, 40).setScrollFactor(0).setDepth(1500);
@@ -217,9 +259,9 @@ export class ImmuneRescueScene extends Phaser.Scene {
     btn.add(g);
     btn.add(
       this.add
-        .text(0, 0, "← Menu", {
+        .text(0, 0, "Restart", {
           fontFamily: "ui-sans-serif, system-ui",
-          fontSize: "16px",
+          fontSize: "20px",
           color: "#cfd8e8",
         })
         .setOrigin(0.5),
@@ -228,7 +270,7 @@ export class ImmuneRescueScene extends Phaser.Scene {
       this.add
         .rectangle(0, 0, 120, 40, 0xffffff, 0.001)
         .setInteractive({ useHandCursor: true })
-        .on("pointerdown", () => this.scene.start("level-select")),
+        .on("pointerdown", () => this.restartLevel()),
     );
   }
 
@@ -240,8 +282,8 @@ export class ImmuneRescueScene extends Phaser.Scene {
     this.winOverlay = new WinOverlay(
       this,
       fakeDef,
-      () => this.scene.start("immune-mode-select"),
-      () => this.scene.start("level-select"),
+      () => this.restartLevel(),
+      () => this.restartLevel(),
     );
   }
 
@@ -257,8 +299,8 @@ export class ImmuneRescueScene extends Phaser.Scene {
         body: IMMUNE_FAIL.body,
         biologyLine: IMMUNE_FAIL.biologyLine,
       },
-      () => this.scene.start("immune-rescue", { mode: this.mode } satisfies ImmuneLaunchData),
-      () => this.scene.start("level-select"),
+      () => this.restartLevel(),
+      () => this.restartLevel(),
     );
   }
 

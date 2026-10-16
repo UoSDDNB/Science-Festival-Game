@@ -300,6 +300,33 @@ export function drawCardMotif(
  * Home-card motif for Immune Rescue (not a LevelDef): tissue wash, neutrophil
  * blob, and green bacterial dots with a faint scent ring.
  */
+/**
+ * Home-card motif for Autonomic Arm-Wrestle: SA node tissue, ECG trace, blue/orange tug.
+ */
+export function drawAutonomicArmWrestleMotif(
+  g: Phaser.GameObjects.Graphics,
+  x: number, y: number, w: number, h: number,
+  rTop: number, rBottom: number,
+): void {
+  fillBox(g, x, y, w, h, "#1a1028", "#3a1a40", rTop, rBottom);
+  const m = Math.min(w, h);
+  const cx = x + w * 0.5;
+  const cy = y + h * 0.55;
+  g.fillStyle(hexToInt("#e8a0b8"), 0.45);
+  g.fillEllipse(cx, cy, m * 0.38, m * 0.28);
+  g.lineStyle(Math.max(1, m * 0.02), hexToInt("#4fd1c5"), 0.8);
+  g.beginPath();
+  g.moveTo(x + w * 0.12, cy + m * 0.08);
+  g.lineTo(x + w * 0.35, cy + m * 0.08);
+  g.lineTo(x + w * 0.42, cy - m * 0.12);
+  g.lineTo(x + w * 0.5, cy + m * 0.14);
+  g.strokePath();
+  g.fillStyle(hexToInt("#4fd1c5"), 0.9);
+  g.fillCircle(x + w * 0.18, cy + m * 0.2, m * 0.05);
+  g.fillStyle(hexToInt("#ff8a4a"), 0.9);
+  g.fillCircle(x + w * 0.82, cy + m * 0.2, m * 0.05);
+}
+
 export function drawImmuneRescueMotif(
   g: Phaser.GameObjects.Graphics,
   x: number, y: number, w: number, h: number,

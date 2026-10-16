@@ -5,6 +5,15 @@ import { ImmuneMode } from "./types";
 
 export type ScreenToWorld = (sx: number, sy: number) => [number, number];
 
+export interface MovementClamp {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+export type GetMovementClamp = () => MovementClamp;
+
 /**
  * Direct pointer steering: hold/drag with touch or mouse in the P1 zone and the
  * neutrophil moves toward that world point. No on-screen joystick.
@@ -16,9 +25,9 @@ export class NeutrophilController {
   private readonly mode: ImmuneMode;
   private readonly body: Phaser.GameObjects.Container;
   private readonly toWorld: ScreenToWorld;
+  private readonly getClamp: GetMovementClamp;
 
   private velocity = new Phaser.Math.Vector2(0, 0);
-  private steerDir = new Phaser.Math.Vector2(0, 0);
   private activePointerId: number | null = null;
   private targetX = 0;
   private targetY = 0;
@@ -31,12 +40,14 @@ export class NeutrophilController {
     chemotaxis: ChemotaxisField,
     mode: ImmuneMode,
     toWorld: ScreenToWorld,
+    getClamp: GetMovementClamp,
   ) {
     this.scene = scene;
     this.body = body;
     this.chemotaxis = chemotaxis;
     this.mode = mode;
     this.toWorld = toWorld;
+    this.getClamp = getClamp;
     scene.input.on("pointerdown", this.onDown, this);
     scene.input.on("pointermove", this.onMove, this);
     scene.input.on("pointerup", this.onUp, this);
@@ -66,32 +77,30 @@ export class NeutrophilController {
     const assist = this.chemotaxis.sampleGradient(this.body.x, this.body.y);
     assist.scale(IMMUNE_CONFIG.neutrophilSpeed * IMMUNE_CONFIG.chemotaxisAssist);
 
+    let desiredX = 0;
+    let desiredY = 0;
     if (this.hasTarget) {
       const dx = this.targetX - this.body.x;
       const dy = this.targetY - this.body.y;
       const dist = Math.hypot(dx, dy);
-      if (dist < 8) {
-        this.steerDir.set(0, 0);
+      if (dist > 0.5) {
+        const speedScale = Phaser.Math.Clamp(dist / 72, 0.2, 1);
+        const speed = IMMUNE_CONFIG.neutrophilSpeed * speedScale;
+        desiredX = (dx / dist) * speed + assist.x;
+        desiredY = (dy / dist) * speed + assist.y;
       } else {
-        this.steerDir.set(dx / dist, dy / dist);
+        desiredX = assist.x;
+        desiredY = assist.y;
       }
-    } else {
-      this.steerDir.set(0, 0);
     }
 
-    const steer = this.steerDir.clone().scale(IMMUNE_CONFIG.neutrophilSpeed);
-    this.velocity.set(steer.x + assist.x, steer.y + assist.y);
+    const blend = 1 - Math.exp(-12 * dt);
+    this.velocity.x = Phaser.Math.Linear(this.velocity.x, desiredX, blend);
+    this.velocity.y = Phaser.Math.Linear(this.velocity.y, desiredY, blend);
 
-    this.body.x = Phaser.Math.Clamp(
-      this.body.x + this.velocity.x * dt,
-      IMMUNE_CONFIG.neutrophilRadius,
-      IMMUNE_CONFIG.worldWidth - IMMUNE_CONFIG.neutrophilRadius,
-    );
-    this.body.y = Phaser.Math.Clamp(
-      this.body.y + this.velocity.y * dt,
-      IMMUNE_CONFIG.neutrophilRadius,
-      IMMUNE_CONFIG.worldHeight - IMMUNE_CONFIG.neutrophilRadius,
-    );
+    const { minX, maxX, minY, maxY } = this.getClamp();
+    this.body.x = Phaser.Math.Clamp(this.body.x + this.velocity.x * dt, minX, maxX);
+    this.body.y = Phaser.Math.Clamp(this.body.y + this.velocity.y * dt, minY, maxY);
   }
 
   destroy(): void {
@@ -136,7 +145,7 @@ export class NeutrophilController {
   private onMove(pointer: Phaser.Input.Pointer): void {
     if (this.inputBlocked()) return;
     if (pointer.id !== this.activePointerId) return;
-    if (!this.inP1Zone(pointer) || this.hitsSteerBlocker(pointer)) {
+    if (!this.inP1Zone(pointer)) {
       this.clearTarget();
       return;
     }
@@ -151,13 +160,13 @@ export class NeutrophilController {
 
   private setTargetFromPointer(pointer: Phaser.Input.Pointer): void {
     const [wx, wy] = this.toWorld(pointer.x, pointer.y);
-    this.targetX = wx;
-    this.targetY = wy;
+    const alpha = 0.35;
+    this.targetX = this.hasTarget ? Phaser.Math.Linear(this.targetX, wx, alpha) : wx;
+    this.targetY = this.hasTarget ? Phaser.Math.Linear(this.targetY, wy, alpha) : wy;
     this.hasTarget = true;
   }
 
   private clearTarget(): void {
     this.hasTarget = false;
-    this.steerDir.set(0, 0);
   }
 }

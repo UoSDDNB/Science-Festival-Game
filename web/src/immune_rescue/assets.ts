@@ -9,10 +9,13 @@ export const IMMUNE_TEX = {
 } as const;
 
 const IMAGE_PATHS: Record<(typeof IMMUNE_TEX)[keyof typeof IMMUNE_TEX], string> = {
-  [IMMUNE_TEX.tissue]: "images/Tissue.png",
+  [IMMUNE_TEX.tissue]: "images/tissue.png",
   [IMMUNE_TEX.bacteria]: "images/bacteria.png",
   [IMMUNE_TEX.neutrophil]: "images/neutrophil.png",
 };
+
+/** Native neutrophil PNG aspect (3000×2100). */
+const NEUTROPHIL_ASPECT = 2100 / 3000;
 
 /** Bacteria on-screen width (smaller than the neutrophil). */
 export function microbeSpriteWidth(): number {
@@ -24,9 +27,15 @@ export function bacteriaDisplaySize(_radius: number): { w: number; h: number } {
   return { w, h: w * 0.55 };
 }
 
-/** Neutrophil diameter — larger than bacteria for clear player focus. */
+/** Neutrophil width — larger than bacteria for clear player focus. */
 export function neutrophilDisplaySize(sizeScale = 1): number {
   return IMMUNE_CONFIG.colonyBaseRadius * 5.5 * sizeScale;
+}
+
+/** On-screen neutrophil size preserving the source PNG aspect ratio. */
+export function neutrophilDisplayDimensions(sizeScale = 1): { w: number; h: number } {
+  const w = neutrophilDisplaySize(sizeScale);
+  return { w, h: w * NEUTROPHIL_ASPECT };
 }
 
 /** Queue Immune Rescue PNGs on a Phaser loader (BootScene). */
@@ -70,10 +79,8 @@ export function punchBlackMatte(scene: Phaser.Scene, key: string, threshold = 18
 }
 
 /**
- * Tissue backdrop that zooms (uniform scale) until it covers the viewport —
- * fills left/right/top/bottom; excess is cropped, aspect preserved.
- * Always pass the current logical screen size from `viewportSize(scene)` so
- * the zoom adapts to phone, tablet, and desktop viewports.
+ * Tissue backdrop cover-zoomed to the viewport (aspect preserved, fills the screen).
+ * Always pass the current logical screen size from `viewportSize(scene)`.
  */
 export function addTissueBackground(
   scene: Phaser.Scene,
@@ -90,7 +97,7 @@ export function addTissueBackground(
 }
 
 /**
- * Zoom tissue to cover `width`×`height` (object-fit: cover).
+ * Cover-zoom tissue to fill `width`×`height` without distorting aspect ratio.
  * Call again whenever the screen size changes.
  */
 export function zoomTissueToFill(
@@ -102,10 +109,9 @@ export function zoomTissueToFill(
   const vh = Math.max(1, height);
   const fw = Math.max(1, img.frame.realWidth);
   const fh = Math.max(1, img.frame.realHeight);
-  const zoom = Math.max(vw / fw, vh / fh);
   img.setOrigin(0.5, 0.5);
-  img.setScale(zoom);
   img.setPosition(vw / 2, vh / 2);
+  img.setScale(Math.max(vw / fw, vh / fh));
 }
 
 /**

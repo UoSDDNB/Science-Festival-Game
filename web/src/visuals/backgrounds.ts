@@ -16,15 +16,16 @@ export function buildBackground(scene: Phaser.Scene, def: LevelDef): Phaser.Game
 
   if (def.background === "nasal_journey") {
     drawNasalJourney(g, def, worldW);
+    stampBloodstreamPanel(scene, rt, 2400, worldW - 2400, WORLD_HEIGHT);
+    rt.draw(g);
   } else {
     drawSkyGradient(g, def, worldW);
     if (def.background === "ice_age") drawIceAge(g, def, worldW);
     else if (def.background === "norse") drawNorse(g, def, worldW);
     else if (def.background === "tissue") drawTissue(g, def, worldW);
     else drawEnchanted(g, def, worldW);
+    rt.draw(g);
   }
-
-  rt.draw(g);
   g.destroy();
   rt.setDepth(0);
   rt.setName(key);
@@ -48,7 +49,7 @@ function drawNasalJourney(g: Phaser.GameObjects.Graphics, def: LevelDef, worldW:
   // Three zones blended left-to-right:
   //   [0..1280]   garden — sky + grass + flower silhouettes
   //   [1280..2400] face profile — side silhouette of head, nose pointing left
-  //   [2400..worldW] nasal interior — pink mucosa, mucus drips, narrowing tunnel
+  //   [2400..worldW] bloodstream art (PNG) + nasal tube entry
   const skyTop = hexToInt(def.palette.bgTop);
   const skyBot = hexToInt(def.palette.bgBottom);
   const grass = hexToInt(def.palette.ground);
@@ -59,7 +60,6 @@ function drawNasalJourney(g: Phaser.GameObjects.Graphics, def: LevelDef, worldW:
   const hairDark = 0x3a241a;
   const mucosa = 0xe88a96;
   const mucosaDark = 0xa05060;
-  const innerTissue = 0x6a2a36;
   const lumen = 0xf3c2c8;
 
   // Background bands (calm, per-zone) — garden sky / face peach / interior tissue
@@ -75,12 +75,7 @@ function drawNasalJourney(g: Phaser.GameObjects.Graphics, def: LevelDef, worldW:
     g.fillStyle(lerpColor(0xf4dcc6, 0xe7c3a5, t), 1);
     g.fillRect(1280, (i * WORLD_HEIGHT) / bands, 1120, WORLD_HEIGHT / bands + 1);
   }
-  // Interior zone — deeper body tissue
-  for (let i = 0; i < bands; i++) {
-    const t = i / (bands - 1);
-    g.fillStyle(lerpColor(mucosaDark, innerTissue, t), 1);
-    g.fillRect(2400, (i * WORLD_HEIGHT) / bands, worldW - 2400, WORLD_HEIGHT / bands + 1);
-  }
+  // Zone 3 backdrop is `images/bloodstream.png` — stamped in buildBackground().
 
   // --- Zone 1: Garden (kept calm — a few soft flowers, no busy specks) ---
   // Sun
@@ -234,56 +229,25 @@ function drawNasalJourney(g: Phaser.GameObjects.Graphics, def: LevelDef, worldW:
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
     g.fillCircle(mx, my, 14);
   }
+}
 
-  // --- Zone 3: Nasal interior ---
-  // A receding tunnel — upper and lower mucosa walls converging deeper.
-  // Drawn as curved bands. The mast cell sits centred at (3050, 560).
-  // Upper wall
-  g.fillStyle(mucosaDark, 1);
-  g.beginPath();
-  g.moveTo(2400, 0);
-  g.lineTo(worldW, 0);
-  g.lineTo(worldW, 240);
-  // Wavy lower edge of upper wall
-  for (let x = worldW; x >= 2400; x -= 40) {
-    const t = (x - 2400) / (worldW - 2400);
-    const y = 360 - t * 80 + Math.sin(x * 0.012) * 14;
-    g.lineTo(x, y);
-  }
-  g.lineTo(2400, 360);
-  g.closePath();
-  g.fillPath();
-  // Lower wall
-  g.fillStyle(mucosaDark, 1);
-  g.beginPath();
-  g.moveTo(2400, WORLD_HEIGHT);
-  g.lineTo(worldW, WORLD_HEIGHT);
-  g.lineTo(worldW, 880);
-  for (let x = worldW; x >= 2400; x -= 40) {
-    const t = (x - 2400) / (worldW - 2400);
-    const y = 760 + t * 80 + Math.sin(x * 0.012 + 1.7) * 16;
-    g.lineTo(x, y);
-  }
-  g.lineTo(2400, 760);
-  g.closePath();
-  g.fillPath();
-  // Mucus glints
-  g.fillStyle(0xfff0e0, 0.35);
-  for (let i = 0; i < 18; i++) {
-    const x = 2450 + pseudo(i, 23) * (worldW - 2500);
-    const y = 380 + pseudo(i, 29) * 360;
-    const r = 6 + pseudo(i, 31) * 10;
-    g.fillCircle(x, y, r);
-  }
-  // Cilia hint along walls
-  g.lineStyle(2, 0xfff0e0, 0.4);
-  for (let x = 2420; x < worldW; x += 24) {
-    g.lineBetween(x, 360 + Math.sin(x * 0.012) * 14, x + 2, 360 + Math.sin(x * 0.012) * 14 + 14);
-    g.lineBetween(x, 760 + Math.sin(x * 0.012 + 1.7) * 16, x + 2, 760 + Math.sin(x * 0.012 + 1.7) * 16 - 14);
-  }
-  // Deep vignette at far end
-  g.fillStyle(0x1a0510, 0.55);
-  g.fillEllipse(worldW - 100, 540, 280, 400);
+/** Cover-stamp the bloodstream art into the final nasal-journey panel (x ≥ 2400). */
+function stampBloodstreamPanel(
+  scene: Phaser.Scene,
+  rt: Phaser.GameObjects.RenderTexture,
+  panelX: number,
+  panelW: number,
+  panelH: number,
+): void {
+  if (!scene.textures.exists("allergy-bloodstream")) return;
+
+  const img = scene.add.image(panelX + panelW / 2, panelH / 2, "allergy-bloodstream");
+  const fw = Math.max(1, img.width);
+  const fh = Math.max(1, img.height);
+  img.setOrigin(0.5, 0.5);
+  img.setScale(Math.max(panelW / fw, panelH / fh));
+  rt.draw(img);
+  img.destroy();
 }
 
 function drawFlower(g: Phaser.GameObjects.Graphics, x: number, y: number, scale: number, petalCol: number, centerCol: number): void {

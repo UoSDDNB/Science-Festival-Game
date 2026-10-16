@@ -5,11 +5,12 @@ export const IMMUNE_CONFIG = {
   worldWidth: 1920,
   worldHeight: 1080,
   /** Colonies the player must engulf to win (ramps difficulty with progress). */
-  winEngulfCount: 10,
-  maxTissueDamage: 100,
+  winEngulfCount: 15,
+  /** Tissue integrity pool (~10 extra seconds vs base 100 at three live colonies). */
+  maxTissueDamage: 147,
   /** Damage per second scaled by live colony count. */
   damagePerColonyPerSec: 1.55,
-  neutrophilSpeed: 280,
+  neutrophilSpeed: 370,
   neutrophilRadius: 360,
   /** Soft scent pull — finger steering is required to engulf. */
   chemotaxisAssist: 0.12,
@@ -24,7 +25,7 @@ export const IMMUNE_CONFIG = {
   aiSpawnSeconds: 5.5,
   /** Two-player cap for P2-placed colonies. */
   maxColonies: 22,
-  /** Single-player: always keep this many bacteria visible (refill on kill). */
+  /** Single-player: always keep this many bacteria visible (refill on destroy). */
   minColoniesOnScreen: 2,
   maxColoniesOnScreen: 3,
   maxDecoys: 6,
@@ -38,8 +39,8 @@ export const IMMUNE_CONFIG = {
   fleeSpeedMax: 95,
   /** NETosis: max reach from neutrophil to pick targets (world units). */
   netosisRadius: 420,
-  /** Seconds before NETosis can be used again. */
-  netosisCooldownSeconds: 8,
+  /** Seconds before NETosis can be used again (button shows 5→1 countdown). */
+  netosisCooldownSeconds: 5,
   /** How long each trap web stays visible at a bacterium. */
   netosisLifeSeconds: 5.5,
   /** Max trap webs on screen at once. */
@@ -70,17 +71,17 @@ export const IMMUNE_PALETTE: ImmunePalette = {
 };
 
 export const IMMUNE_WIN = {
-  title: "CLEARED!",
-  body: "Your neutrophil followed the chemical trail, engulfed the invaders, and protected the tissue.",
+  title: "Well done!",
+  body: "Your neutrophil engulfed the bacteria via phagocytosis and cleared the infection.",
   biologyLine:
-    "That is chemotaxis and phagocytosis — immune cells smell infection, crawl toward it, and swallow the threat.",
+    "The AI helper also released extracellular nets to trap and destroy bacteria using granule proteins and chromatin.",
 };
 
 export const IMMUNE_FAIL = {
-  title: "OVERWHELMED",
-  body: "Infection spread faster than the neutrophil could clear. Tissue integrity collapsed.",
+  title: "Bad luck!",
+  body: "Engulfing the bacteria via phagocytosis alone is not enough to clear the spread of infection.",
   biologyLine:
-    "When pathogens outpace innate immunity, inflammation and tissue damage spiral — this is why speed and targeting matter.",
+    "Try using the AI helper to release extracellular nets to trap and destroy the bacteria using granule proteins and chromatin to help you.",
   triggerSeconds: 0,
 };
 
@@ -90,6 +91,6 @@ export const IMMUNE_INTRO = {
   body:
     "You have an infection. Your neutrophil has moved from the blood stream into the tissue.\n\n" +
     "You are a neutrophil and you need to engulf the bacteria before your immune system becomes overwhelmed.\n\n" +
-    "Press the AI help to release granule proteins and chromatin to help you kill the bacteria.",
+    "Press the AI help to release granule proteins and chromatin to help you destroy the bacteria.",
   dismiss: "Tap anywhere to begin",
 } as const;

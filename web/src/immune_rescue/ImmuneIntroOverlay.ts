@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { IMMUNE_INTRO } from "./config";
+import { viewportSize } from "./assets";
 
 /** Full-screen briefing text box before the player enters the tissue. */
 export class ImmuneIntroOverlay {
@@ -113,31 +114,37 @@ export class ImmuneIntroOverlay {
   };
 
   private layout = (): void => {
-    const w = this.scene.scale.width;
-    const h = this.scene.scale.height;
+    const { w, h } = viewportSize(this.scene);
     this.veil.setPosition(w / 2, h / 2);
     this.veil.setSize(w, h);
 
-    const cardW = Math.min(640, w - 48);
-    const wrap = cardW - 56;
     const title = this.root.getData("title") as Phaser.GameObjects.Text;
     const body = this.root.getData("body") as Phaser.GameObjects.Text;
     const dismiss = this.root.getData("dismiss") as Phaser.GameObjects.Text;
     const panel = this.root.getData("panel") as Phaser.GameObjects.Graphics;
 
+    const cardW = Math.min(640, w - 48);
+    const wrap = cardW - 56;
+    title.setFontSize(Math.max(24, Math.min(34, Math.round(w * 0.045))));
+    body.setFontSize(Math.max(17, Math.min(21, Math.round(w * 0.026))));
+    dismiss.setFontSize(Math.max(19, Math.min(24, Math.round(w * 0.028))));
     title.setWordWrapWidth(wrap);
     body.setWordWrapWidth(wrap);
-    title.setPosition(0, 0);
-    body.setPosition(0, title.height + 18);
+
+    const contentH = title.height + 18 + body.height + 28 + dismiss.height;
+    const panelH = contentH + 32;
+    const panelTop = -panelH / 2;
+
+    title.setPosition(0, panelTop + 16);
+    body.setPosition(0, title.y + title.height + 18);
     dismiss.setPosition(0, body.y + body.height + 28);
 
-    const cardH = dismiss.y + dismiss.height + 28;
     panel.clear();
     panel.fillStyle(0x120818, 0.94);
-    panel.fillRoundedRect(-cardW / 2, -16, cardW, cardH + 32, 14);
+    panel.fillRoundedRect(-cardW / 2, panelTop, cardW, panelH, 14);
     panel.lineStyle(2, 0x4fd1c5, 0.55);
-    panel.strokeRoundedRect(-cardW / 2, -16, cardW, cardH + 32, 14);
+    panel.strokeRoundedRect(-cardW / 2, panelTop, cardW, panelH, 14);
 
-    this.root.setPosition(w / 2, h / 2 - cardH * 0.08);
+    this.root.setPosition(w / 2, h / 2);
   };
 }

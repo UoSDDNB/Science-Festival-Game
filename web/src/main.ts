@@ -1,17 +1,11 @@
 import Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
-import { LevelSelectScene } from "./scenes/LevelSelectScene";
-import { LevelScene } from "./scenes/LevelScene";
-import { ArcadeSelectScene } from "./arcade/ArcadeSelectScene";
-import { GAME_SCENES } from "./arcade/registry";
-import { ImmuneModeSelectScene } from "./immune_rescue/ImmuneModeSelectScene";
 import { ImmuneRescueScene } from "./immune_rescue/ImmuneRescueScene";
 import { WORLD_WIDTH, WORLD_HEIGHT } from "./types";
 
 /**
  * Phaser bootstrap. The whole game ships as JS + bundled JSON — no asset CDN.
  * Scale.RESIZE fills the device screen (festival tablets, phones, laptops).
- * Letterboxing of in-game coordinates is handled inside LevelScene / ImmuneRescue.
  */
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -24,7 +18,7 @@ const config: Phaser.Types.Core.GameConfig = {
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   input: {
-    activePointers: 3,
+    activePointers: 6,
   },
   render: {
     antialias: true,
@@ -32,15 +26,7 @@ const config: Phaser.Types.Core.GameConfig = {
     roundPixels: false,
   },
   fps: { target: 60, forceSetTimeOut: false },
-  scene: [
-    BootScene,
-    LevelSelectScene,
-    LevelScene,
-    ArcadeSelectScene,
-    ImmuneModeSelectScene,
-    ImmuneRescueScene,
-    ...GAME_SCENES,
-  ],
+  scene: [BootScene, ImmuneRescueScene],
 };
 
 const game = new Phaser.Game(config);

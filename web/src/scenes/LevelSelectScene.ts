@@ -1,9 +1,8 @@
 import Phaser from "phaser";
-import { LEVELS } from "../levels";
-import { LevelDef } from "../types";
-import { hexToInt } from "../visuals/palette";
-import { drawCardMotif, drawImmuneRescueMotif, lerpHex } from "../visuals/cardPreview";
+import { drawImmuneRescueMotif, lerpHex } from "../visuals/cardPreview";
 import { ScrollPanel } from "../ui/ScrollPanel";
+
+const IMMUNE_SINGLE_LAUNCH = { mode: "single" as const };
 
 /**
  * Card-based level select — responsive port of the production live build
@@ -212,9 +211,9 @@ export class LevelSelectScene extends Phaser.Scene {
     this.scale.on("resize", this.scheduleRebuild, this);
     window.addEventListener("orientationchange", this.onOrientationChange);
     this.rebuildLayout();
-    // Quick-start first level on Enter
+    // Immune Rescue only
     this.input.keyboard?.on("keydown-ENTER", () => {
-      this.launch(LEVELS[0]!);
+      this.scene.start("immune-rescue", IMMUNE_SINGLE_LAUNCH);
     });
   }
 
@@ -237,8 +236,8 @@ export class LevelSelectScene extends Phaser.Scene {
     if (this.uiRoot) this.uiRoot.destroy(true);
     const w = this.scale.width;
     const h = this.scale.height;
-    // Narrative levels + Immune Rescue + Arcade
-    this.layout = computeLayout(w, h, LEVELS.length + 2);
+    // Immune Rescue only
+    this.layout = computeLayout(w, h, 1);
 
     this.uiRoot = this.add.container(0, 0);
 
@@ -284,22 +283,7 @@ export class LevelSelectScene extends Phaser.Scene {
     const panel = this.scrollPanel as ScrollPanel | null;
     const wholeCardClickable = !scrollMode;
 
-    LEVELS.forEach((lvl, i) => {
-      const pos = this.layout!.positions[i]!;
-      // Panel-hosted cards: positions are screen coords, the panel content is
-      // anchored at x=12, y=scrollAreaTop — subtract the x offset so cards
-      // stay centred on w/2 on screen.
-      const cardX = scrollMode ? pos.x - 12 : pos.x;
-      const card = this.makeCard(cardX, pos.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, lvl, wholeCardClickable);
-      if (scrollMode && panel) {
-        panel.add(card, this.layout!.cardHeight);
-      } else {
-        host.add(card);
-      }
-    });
-
-    // Immune Rescue card — after narrative levels, before Arcade.
-    const ip = this.layout!.positions[LEVELS.length]!;
+    const ip = this.layout!.positions[0]!;
     const irX = scrollMode ? ip.x - 12 : ip.x;
     const irCard = this.makeImmuneRescueCard(
       irX,
@@ -313,17 +297,6 @@ export class LevelSelectScene extends Phaser.Scene {
       panel.add(irCard, this.layout!.cardHeight);
     } else {
       host.add(irCard);
-    }
-
-    // The Arcade card — last position, visually distinct (gold frame,
-    // marquee band, "A1" chip). Opens the arcade-select submenu (D-1).
-    const ap = this.layout!.positions[LEVELS.length + 1]!;
-    const arcX = scrollMode ? ap.x - 12 : ap.x;
-    const arcCard = this.makeArcadeCard(arcX, ap.y, this.layout!.cardWidth, this.layout!.cardHeight, this.layout!.compact, wholeCardClickable);
-    if (scrollMode && panel) {
-      panel.add(arcCard, this.layout!.cardHeight);
-    } else {
-      host.add(arcCard);
     }
   }
 
@@ -339,80 +312,6 @@ export class LevelSelectScene extends Phaser.Scene {
     this.scrollPanel.setContentHeight(L.contentHeight);
     this.uiRoot!.add(this.scrollPanel.container);
     return this.scrollPanel.list;
-  }
-
-  private makeCard(
-    cx: number, cy: number, w: number, h: number,
-    compact: boolean, lvl: LevelDef, wholeCardClickable: boolean,
-  ): Phaser.GameObjects.Container {
-    const tint = hexToInt(lvl.palette.fire);
-    const card = this.add.container(cx, cy);
-    const r = compact ? 12 : 16;
-
-    const g = this.add.graphics();
-    g.fillStyle(0x111a2a, 0.85);
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
-    g.lineStyle(2, tint, 0.65);
-    g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
-    card.add(g);
-
-    const m = cardMetrics(w, h, this.scale.width, compact);
-
-    // Semantic preview: full band on desktop cards, 36 px icon (replacing the
-    // old palette-swatch row) on compact phone cards. Palette-driven.
-    if (compact) {
-      const icon = this.add.graphics();
-      drawCardMotif(icon, lvl, -w / 2 + 14, -h / 2 + 10, 36, 36, 8, 8);
-      card.add(icon);
-    } else {
-      const band = this.add.graphics();
-      drawCardMotif(band, lvl, -w / 2, -h / 2, w, 56, r, 0);
-      card.add(band);
-    }
-
-    // Order number on a small dark chip (readable over any preview colour)
-    const chip = this.add.graphics();
-    chip.fillStyle(0x0a0f1a, 0.72);
-    chip.fillRoundedRect(w / 2 - 14 - 40, -h / 2 + 8, 40, 22, 6);
-    card.add(chip);
-    const order = this.add
-      .text(w / 2 - 14 - 20, -h / 2 + 19, `0${lvl.order}`, { fontFamily: "ui-monospace, monospace", fontSize: `${m.orderSize}px`, color: "#c9d6ea" })
-      .setOrigin(0.5);
-    card.add(order);
-
-    // Name — compact floor 16 px (approved: the live build's ~7 px phone name was a bug)
-    const nameSize = Math.max(16, m.nameSize);
-    const nameY = compact ? -h / 2 + 52 : -h / 2 + 56 + 14;
-    const name = this.add
-      .text(0, nameY, lvl.name, { fontFamily: "ui-sans-serif, system-ui", fontSize: `${nameSize}px`, color: "#e8eef8", fontStyle: "bold", align: "center", wordWrap: { width: w - 28 } })
-      .setOrigin(0.5, 0);
-    card.add(name);
-
-    if (m.showBlurb) {
-      const blurb = this.add
-        .text(0, nameY + nameSize + 8, lvl.win.biologyLine, { fontFamily: "ui-sans-serif, system-ui", fontSize: `${m.blurbSize}px`, color: "#8fb6ff", fontStyle: "italic", align: "center", wordWrap: { width: w - 36 } })
-        .setOrigin(0.5, 0);
-      card.add(blurb);
-    }
-
-    if (lvl.unlocked) {
-      const play = this.makePlayButton(0, m.playY, "PLAY", m.buttonWidth, m.buttonHeight, () => this.launch(lvl));
-      card.add(play);
-      if (wholeCardClickable) {
-        // Invisible full-card launch rect (desktop modes only)
-        const hit = this.add
-          .rectangle(0, 0, w, h, 0xffffff, 0.001)
-          .setInteractive({ useHandCursor: true })
-          .on("pointerdown", () => this.launch(lvl));
-        card.addAt(hit, 0);
-      }
-    } else {
-      const locked = this.add
-        .text(0, m.playY, "Coming Soon", { fontFamily: "ui-sans-serif, system-ui", fontSize: "14px", color: "#5a6a80" })
-        .setOrigin(0.5);
-      card.add(locked);
-    }
-    return card;
   }
 
   /** Immune Rescue home card — teal frame, tissue/neutrophil motif, opens mode select. */
@@ -474,7 +373,7 @@ export class LevelSelectScene extends Phaser.Scene {
     if (m.showBlurb) {
       card.add(
         this.add
-          .text(0, nameY + nameSize + 8, "chemotaxis · phagocytosis · single or two-player", {
+          .text(0, nameY + nameSize + 8, "chemotaxis · phagocytosis · steer the neutrophil", {
             fontFamily: "ui-sans-serif, system-ui",
             fontSize: `${m.blurbSize}px`,
             color: "#8fb6ff",
@@ -487,7 +386,7 @@ export class LevelSelectScene extends Phaser.Scene {
     }
 
     const open = (): void => {
-      this.scene.start("immune-mode-select");
+      this.scene.start("immune-rescue", IMMUNE_SINGLE_LAUNCH);
     };
     card.add(this.makePlayButton(0, m.playY, "PLAY", m.buttonWidth, m.buttonHeight, open));
     if (wholeCardClickable) {
@@ -500,96 +399,6 @@ export class LevelSelectScene extends Phaser.Scene {
       );
     }
     return card;
-  }
-
-  /** The Arcade card (D-1/OQ-2 default): gold frame, marquee band with bulb
-   *  dots + "GAME" text, "A1" chip instead of an order number. Marquee art is
-   *  in-scene graphics (R7: cardPreview.ts stays level-only). */
-  private makeArcadeCard(
-    cx: number, cy: number, w: number, h: number,
-    compact: boolean, wholeCardClickable: boolean,
-  ): Phaser.GameObjects.Container {
-    const m = cardMetrics(w, h, this.scale.width, compact);
-    const card = this.add.container(cx, cy);
-    const r = compact ? 12 : 16;
-
-    const g = this.add.graphics();
-    g.fillStyle(0x111a2a, 0.9);
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, r);
-    g.lineStyle(3, 0xffd060, 0.9);
-    g.strokeRoundedRect(-w / 2, -h / 2, w, h, r);
-    card.add(g);
-
-    // Marquee band (or compact icon) — drawMarquee returns the optional
-    // label Text, which the card reparents into its local space.
-    if (compact) {
-      const icon = this.add.graphics();
-      const lbl = this.drawMarquee(icon, -w / 2 + 14, -h / 2 + 10, 36, 36);
-      card.add(icon);
-      if (lbl) card.add(lbl);
-    } else {
-      const band = this.add.graphics();
-      const lbl = this.drawMarquee(band, -w / 2, -h / 2, w, 56);
-      card.add(band);
-      if (lbl) card.add(lbl);
-    }
-
-    // "A1" chip (distinct from the "0N" order chips)
-    const chip = this.add.graphics();
-    chip.fillStyle(0x0a0f1a, 0.72);
-    chip.fillRoundedRect(w / 2 - 14 - 40, -h / 2 + 8, 40, 22, 6);
-    card.add(chip);
-    const order = this.add
-      .text(w / 2 - 14 - 20, -h / 2 + 19, "A1", { fontFamily: "ui-monospace, monospace", fontSize: `${m.orderSize}px`, color: "#ffd86a" })
-      .setOrigin(0.5);
-    card.add(order);
-
-    const nameSize = Math.max(16, m.nameSize);
-    const nameY = compact ? -h / 2 + 52 : -h / 2 + 56 + 14;
-    const name = this.add
-      .text(0, nameY, "The Arcade", { fontFamily: "ui-sans-serif, system-ui", fontSize: `${nameSize}px`, color: "#ffd86a", fontStyle: "bold", align: "center", wordWrap: { width: w - 28 } })
-      .setOrigin(0.5, 0);
-    card.add(name);
-
-    if (m.showBlurb) {
-      const blurb = this.add
-        .text(0, nameY + nameSize + 8, "classic arcade loops — catch, tap, match, chase", { fontFamily: "ui-sans-serif, system-ui", fontSize: `${m.blurbSize}px`, color: "#8fb6ff", fontStyle: "italic", align: "center", wordWrap: { width: w - 36 } })
-        .setOrigin(0.5, 0);
-      card.add(blurb);
-    }
-
-    const play = this.makePlayButton(0, m.playY, "PLAY", m.buttonWidth, m.buttonHeight, () => this.scene.start("arcade-select"));
-    card.add(play);
-    if (wholeCardClickable) {
-      const hit = this.add
-        .rectangle(0, 0, w, h, 0xffffff, 0.001)
-        .setInteractive({ useHandCursor: true })
-        .on("pointerdown", () => this.scene.start("arcade-select"));
-      card.addAt(hit, 0);
-    }
-    return card;
-  }
-
-  /** Marquee art: dark band, gold "A R C A D E" label, a row of bulb dots.
-   *  Returns the label Text (or null for small compact icons) — the caller
-   *  adds it to the card so it inherits the card's local coordinates. */
-  private drawMarquee(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number): Phaser.GameObjects.Text | null {
-    g.fillStyle(0x1a1208, 1);
-    g.fillRect(x, y, w, h);
-    // bulbs along the bottom edge
-    const n = Math.max(4, Math.floor(w / 22));
-    for (let i = 0; i < n; i++) {
-      const bx = x + (w / n) * (i + 0.5);
-      g.fillStyle(i % 2 === 0 ? 0xffd86a : 0xff8a3c, 0.95);
-      g.fillCircle(bx, y + h - 7, 3);
-    }
-    if (w >= 80 && h >= 30) {
-      g.fillStyle(0xffd86a, 1);
-      g.fillRect(x, y, w, 3);
-      const label = this.add.text(x + w / 2, y + h / 2 - 2, "A R C A D E", { fontFamily: "ui-monospace, monospace", fontSize: "16px", color: "#ffd86a", fontStyle: "bold" }).setOrigin(0.5);
-      return label;
-    }
-    return null;
   }
 
   private makePlayButton(
@@ -621,9 +430,5 @@ export class LevelSelectScene extends Phaser.Scene {
       .on("pointerout", () => paint(0xffd060, 0.95));
     c.add(hit);
     return c;
-  }
-
-  private launch(lvl: LevelDef): void {
-    this.scene.start("level", { levelId: lvl.id });
   }
 }

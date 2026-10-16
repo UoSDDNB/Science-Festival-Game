@@ -6,7 +6,7 @@
 |----------|-------|
 | **Production engine** | **Phaser 3 + TypeScript + Vite** ([`web/`](web/)) |
 | Live URL | [Open the game](https://playtime.204.168.183.57.sslip.io/) |
-| Levels (live) | Ice Age · Fire Meets Ice · The Allergy Cell · Two Keys · **Immune Rescue** (scene module) |
+| Levels (live) | Ice Age · Fire Meets Ice · The Allergy Cell · Two Keys · **Immune Rescue** · **Autonomic Arm-Wrestle** (scene modules) |
 | Design resolution | 1920 × 1080 (scales to device; phone-friendly level select) |
 | Hosting | Hetzner VPS → `https://playtime.204.168.183.57.sslip.io/` |
 | Prototype (archive) | Godot 4.5 / GDScript in repo root (`scripts/`, `scenes/`) |
@@ -21,6 +21,7 @@
 3. [Extended Level Breakdowns](#3-extended-level-breakdowns)
 4. [Function Directory (Phaser / TypeScript)](#4-function-directory-phaser--typescript)
 4b. [Immune Rescue Function Glossary](#4b-immune-rescue-function-glossary-line-by-line)
+4d. [Autonomic Arm-Wrestle Function Glossary](#4d-autonomic-arm-wrestle-function-glossary-line-by-line)
 5. [Code Readability Rules](#5-code-readability-rules)
 6. [Responsive Layout (Issue #1)](#6-responsive-layout-issue-1)
 7. [Development Workflow](#7-development-workflow)
@@ -50,7 +51,7 @@ Science-Festival-Game/
 │       ├── input/GestureTracker.ts
 │       ├── scenes/
 │       │   ├── BootScene.ts
-│       │   ├── LevelSelectScene.ts   # Responsive cards + ScrollPanel (+ Immune Rescue card)
+│       │   ├── LevelSelectScene.ts   # Responsive cards + ScrollPanel (+ Immune + Autonomic + Arcade)
 │       │   └── LevelScene.ts
 │       ├── immune_rescue/        # ★ Dedicated Immune Rescue scene family (not LevelDef JSON)
 │       │   ├── types.ts
@@ -62,6 +63,22 @@ Science-Festival-Game/
 │       │   ├── ImmuneAssistant.ts    # Optional non-autonomous AI coach
 │       │   ├── ImmuneModeSelectScene.ts
 │       │   └── ImmuneRescueScene.ts
+│       ├── autonomic_arm_wrestle/  # ★ Two-player ANS heart-rate duel (not LevelDef JSON)
+│       │   ├── types.ts
+│       │   ├── config.ts
+│       │   ├── AutonomicArmWrestleScene.ts
+│       │   ├── Phase1Awakening.ts
+│       │   ├── Phase2Duel.ts
+│       │   ├── StrokeInput.ts
+│       │   ├── AutonomicGauge.ts
+│       │   ├── ECGDisplay.ts
+│       │   ├── MoleculePool.ts
+│       │   ├── CleftSystem.ts
+│       │   ├── ParasympatheticTerminal.ts
+│       │   ├── SympatheticTerminal.ts
+│       │   ├── AutonomicHud.ts
+│       │   ├── AutonomicResultOverlay.ts
+│       │   └── assets.ts
 │       ├── ui/                   # Thermometer, hints, win/fail, ScrollPanel…
 │       ├── visuals/              # Procedural art (no CDN assets)
 │       ├── levels/*.json         # Level definitions
@@ -98,8 +115,13 @@ stateDiagram-v2
     LevelSelect --> Level: PLAY on a level card
     LevelSelect --> ArcadeSelect: Arcade card (optional)
     LevelSelect --> ImmuneModeSelect: Immune Rescue PLAY
+    LevelSelect --> AutonomicArmWrestle: Autonomic Arm-Wrestle PLAY
     ImmuneModeSelect --> ImmuneRescue: Single / Two Player
     ImmuneModeSelect --> LevelSelect: Back
+    AutonomicArmWrestle --> AutonomicResult: timer / early win
+    AutonomicResult --> AutonomicArmWrestle: Play Again
+    AutonomicResult --> LevelSelect: Menu
+    AutonomicArmWrestle --> LevelSelect: ESC / Back
     ImmuneRescue --> WinOrFailIR: engulf win / tissue fail
     WinOrFailIR --> ImmuneModeSelect: Play Again (win)
     WinOrFailIR --> ImmuneRescue: Retry same mode (fail)
@@ -116,6 +138,7 @@ stateDiagram-v2
 | Boot | automatic | Level select | Procedural textures built |
 | Level select | PLAY on level | `LevelScene` with `levelId` | Layout rebuilds on resize/orientation |
 | Level select | PLAY on **Immune Rescue** | `immune-mode-select` | Dedicated scene module (not JSON) |
+| Level select | PLAY on **Autonomic Arm-Wrestle** | `autonomic-arm-wrestle` | Two-player ANS duel (no mode picker) |
 | Level select | drag/wheel (phone/stack) | same screen | `ScrollPanel` scrolls fixed-height cards |
 | Immune mode select | Single / Two Player | `immune-rescue` + `{ mode }` | Tissue backdrop + large buttons |
 | Immune Rescue | joystick / P2 taps | same | Chemotaxis field + tissue HUD |
@@ -191,6 +214,47 @@ A source injects heat into a **2D grid** ([`HeatField`](web/src/sim/HeatField.ts
 
 **Flow:** `level-select` → `immune-mode-select` → `immune-rescue` → `WinOverlay` / `FailOverlay` → Menu (level select) or Play Again (mode select on win; same mode retry on fail).
 
+### 3.6 — Autonomic Arm-Wrestle (dedicated scene module)
+
+**Not** a [`LevelDef`](web/src/types.ts) JSON level. Entry is a home-screen card between Immune Rescue and Arcade; gameplay lives under [`web/src/autonomic_arm_wrestle/`](web/src/autonomic_arm_wrestle/).
+
+| Property | Detail |
+|----------|--------|
+| Theme | SA node tissue; parasympathetic vs sympathetic tug-of-war |
+| Entry | Level select → **Autonomic Arm-Wrestle** → gameplay (no mode picker) |
+| Players | **Two-player same screen:** P1 left (blue, ACh) · P2 right (orange, NE) |
+| Phase 1 | Both stroke their half; combined charge awakens the SA node; gauge bias seeds Phase 2 |
+| Phase 2 | 60s duel: pack molecules into vesicles, release at membrane, guide to M₂ / β₁ receptors |
+| Defenses | MAO (P1) dissolves NE in cleft; AChE (P2) dissolves ACh; ACh/NE neutralize on contact |
+| Gauge | 0 = parasympathetic brake · 1 = sympathetic accelerator; drives BPM + ECG + background mood |
+| Early win | Gauge ≤ 20% or ≥ 80% sustained 3s |
+| End states | **Bradycardia** (P1) · **Tachycardia** (P2) · **Homeostasis** (draw) |
+| Biology | Vagus/ACh/M₂ vs sympathetic NE/β₁ on the SA node pacemaker |
+
+**Phase 1 controls**
+
+| Side | Zone | Action |
+|------|------|--------|
+| P1 (left) | `x < w × 0.5` | Rapid stroke to build shared awakening charge |
+| P2 (right) | `x ≥ w × 0.5` | Rapid stroke to build shared awakening charge |
+
+**Phase 2 controls**
+
+| Side | Action |
+|------|--------|
+| P1 | Drag ACh dots → vesicle (4) → drag to lower membrane → release; tap **MAO** near NE |
+| P2 | Drag NE dots → vesicle (4) → drag to upper membrane → release; tap **AChE** near ACh |
+
+**Win matrix (end of round)**
+
+| Gauge at end | Outcome | Copy theme |
+|--------------|---------|------------|
+| ≤ 20% | P1 win — Bradycardia | Calm blue; vagus/ACh |
+| ≥ 80% | P2 win — Tachycardia | Orange flash; β₁/NE |
+| else | Draw — Homeostasis | Equilibrium ECG |
+
+**Flow:** `level-select` → `autonomic-arm-wrestle` → Phase 1 → Phase 2 → `AutonomicResultOverlay` → Play Again (restart) or Menu.
+
 ---
 
 ## 4. Function Directory (Phaser / TypeScript)
@@ -201,7 +265,8 @@ Alphabetical by path. Public / notable methods only.
 
 | Symbol | Description |
 |--------|-------------|
-| Phaser `Game` config | `Scale.RESIZE`, parent `#game`, scenes: Boot → LevelSelect → Level (+ arcade + Immune mode select + Immune Rescue) |
+| Phaser `Game` config | `Scale.RESIZE`, parent `#game`, scenes: Boot → LevelSelect → Level (+ arcade + Immune + Autonomic Arm-Wrestle) |
+| `input.activePointers` | **6** — supports simultaneous two-player stroke/drag on tablets |
 | `__PHASER_GAME` | Optional `window` hook for headless verification |
 
 ### `web/src/types.ts`
@@ -253,10 +318,10 @@ Alphabetical by path. Public / notable methods only.
 | `create()` / `shutdown()` | Resize + orientation listeners |
 | `scheduleRebuild()` / `rebuildLayout()` | Debounced full UI rebuild |
 | `createScrollParent(L)` | Attaches `ScrollPanel` when cards overflow |
-| `makeCard` / `makeArcadeCard` / `makeImmuneRescueCard` / `makePlayButton` | Card UI |
+| `makeCard` / `makeArcadeCard` / `makeImmuneRescueCard` / `makeAutonomicArmWrestleCard` / `makePlayButton` | Card UI |
 | `launch(lvl)` | Starts `LevelScene` with `levelId` |
 
-**Layout modes:** `desktop-row` · `desktop-stack` (scrollable) · `phone-scroll` (fixed card height + `ScrollPanel`). Card count is `LEVELS.length + 2` (Immune Rescue + Arcade).
+**Layout modes:** `desktop-row` · `desktop-stack` (scrollable) · `phone-scroll` (fixed card height + `ScrollPanel`). Card count is `LEVELS.length + 3` (Immune Rescue + Autonomic Arm-Wrestle + Arcade).
 
 #### `makeImmuneRescueCard(cx, cy, w, h, compact, wholeCardClickable)` — new
 
@@ -271,6 +336,21 @@ Alphabetical by path. Public / notable methods only.
   5. Add title **Immune Rescue** and optional italic blurb about chemotaxis / phagocytosis.
   6. Define `open` → `this.scene.start("immune-mode-select")`.
   7. Attach PLAY button; if whole-card clickable, add a transparent hit rect behind content that also calls `open`.
+  8. Return the card container.
+
+#### `makeAutonomicArmWrestleCard(cx, cy, w, h, compact, wholeCardClickable)` — new
+
+- **Purpose:** Build the purple home card that launches Autonomic Arm-Wrestle directly.
+- **Parameters:** Same as `makeImmuneRescueCard`.
+- **Returns:** `Phaser.GameObjects.Container`.
+- **Line-by-line:**
+  1. Compute `cardMetrics` for responsive fonts/buttons.
+  2. Draw dark rounded rect with purple stroke (`0xc084fc`).
+  3. Draw `drawAutonomicArmWrestleMotif` (compact icon or full band).
+  4. Add **ANS** chip in the top-right.
+  5. Add title **Autonomic Arm-Wrestle** and optional blurb about SA node / ACh vs NE.
+  6. Define `open` → `this.scene.start("autonomic-arm-wrestle")`.
+  7. Attach PLAY button and optional whole-card hit target.
   8. Return the card container.
 
 ### `web/src/scenes/LevelScene.ts` — class `LevelScene`
@@ -312,7 +392,7 @@ Alphabetical by path. Public / notable methods only.
 | `creature.ts` | `buildCreature`, **`buildNeutrophilAt`** (no LevelDef) |
 | `fire.ts` | `FireVisual` |
 | `heatOverlay.ts` | `HeatOverlay` (+ optional `{ mode: "chemokine" }`) |
-| `cardPreview.ts` | `drawCardMotif`, `drawImmuneRescueMotif`, `lerpHex` |
+| `cardPreview.ts` | `drawCardMotif`, `drawImmuneRescueMotif`, `drawAutonomicArmWrestleMotif`, `lerpHex` |
 | `interior.ts` | `buildInterior` (nasal journey décor) |
 
 #### `drawTissueBackdrop(g, worldW, worldH, palette)` — new / extracted
@@ -351,6 +431,17 @@ Alphabetical by path. Public / notable methods only.
   2. Draw pale neutrophil ellipse + darker nuclear lobes on the left.
   3. Draw three green bacterial dots on the right.
   4. Stroke a faint teal scent ring around the neutrophil.
+
+#### `drawAutonomicArmWrestleMotif(g, x, y, w, h, rTop, rBottom)` — new
+
+- **Purpose:** Home-card motif (SA node tissue + ECG trace + blue/orange molecule dots).
+- **Parameters:** Graphics; box origin/size; top/bottom corner radii.
+- **Returns:** `void`.
+- **Line-by-line:**
+  1. `fillBox` with deep purple tissue gradient.
+  2. Draw pink SA node ellipse at centre.
+  3. Stroke a small ECG spike polyline across the band.
+  4. Place blue (ACh) and orange (NE) dots on left/right.
 
 #### `HeatOverlay` constructor / `update` — chemokine mode
 
@@ -575,6 +666,247 @@ Faint spokes to all colonies; bold numbered path = suggested order. Updates as c
 #### `overlayDef(title, body, biologyLine)`
 
 - Fabricates a minimal `LevelDef` so existing `WinOverlay` can render Immune Rescue copy without a JSON level.
+
+### `web/src/autonomic_arm_wrestle/*` — Autonomic Arm-Wrestle module
+
+| File | Role |
+|------|------|
+| `types.ts` | `AutonomicPhase`, `PlayerSide`, `MoleculeKind`, `DuelOutcome`, layout/pool types |
+| `config.ts` | `ANS_CONFIG` tunables, `ANS_COPY` strings, `ANS_COLORS` |
+| `AutonomicArmWrestleScene.ts` | Top-level Phaser scene + phase FSM + resize |
+| `Phase1Awakening.ts` | Shared stroke threshold race + flatline ECG |
+| `Phase2Duel.ts` | Terminals, cleft, gauge BPM coupling, 60s timer |
+| `StrokeInput.ts` | Per-pointer stroke speed → charge |
+| `AutonomicGauge.ts` | Central homeostasis bar |
+| `ECGDisplay.ts` | Procedural scrolling ECG strip |
+| `MoleculePool.ts` | Pooled ACh/NE dots and cleft molecules |
+| `CleftSystem.ts` | M₂/β₁ receptors, drift, bind, neutralization |
+| `ParasympatheticTerminal.ts` | P1 ACh packaging + MAO enzyme |
+| `SympatheticTerminal.ts` | P2 NE packaging + AChE enzyme |
+| `AutonomicHud.ts` | Timer, BPM, team hints |
+| `AutonomicResultOverlay.ts` | Bradycardia / Tachycardia / Draw end card |
+| `assets.ts` | Reserved preload hook (procedural v1) |
+
+---
+
+## 4d. Autonomic Arm-Wrestle Function Glossary (line-by-line)
+
+Educational walkthrough of every public surface in [`web/src/autonomic_arm_wrestle/`](web/src/autonomic_arm_wrestle/).
+
+### `types.ts`
+
+| Symbol | Role |
+|--------|------|
+| `AutonomicPhase` | `"awakening" \| "duel" \| "result"` |
+| `PlayerSide` | `"p1" \| "p2"` (parasympathetic left / sympathetic right) |
+| `MoleculeKind` | Free vs cleft ACh/NE discriminant |
+| `ReceptorKind` | `"M2" \| "Beta1"` |
+| `DuelOutcome` | `"p1_win" \| "p2_win" \| "draw"` |
+| `LayoutBands` | HUD/playfield band metrics (reserved for layout helpers) |
+| `PooledMolecule` | Pool slot: sprite, kind, velocity, active flag |
+
+### `config.ts`
+
+| Symbol | Role |
+|--------|------|
+| `ANS_CONFIG` | Thresholds, charge rate, duel duration, bind push, BPM range, molecule speeds |
+| `ANS_COPY` | Phase hints + result biology lines |
+| `ANS_COLORS` | P1 teal, P2 orange, gauge/SA node colours |
+
+### `assets.ts`
+
+#### `preloadAutonomicAssets(scene)`
+
+- **Purpose:** Reserved hook for future PNG textures; v1 uses procedural shapes only.
+- **Returns:** `void`.
+
+### `StrokeInput` — class
+
+#### `constructor(scene, onComplete)`
+
+- **Purpose:** Wire pointer down/move/up for split-zone stroke sampling.
+- **Returns:** New tracker; calls `onComplete(bias)` when combined charge ≥ threshold.
+
+#### `update(dt)`
+
+- **Purpose:** Accumulate P1/P2 charge from smoothed stroke speeds each frame.
+- **Returns:** `void`.
+
+#### `destroy()`
+
+- **Purpose:** Remove pointer listeners.
+- **Returns:** `void`.
+
+#### Getters: `totalCharge`, `bias`
+
+- **Purpose:** Combined awakening progress and clamped gauge seed for Phase 2.
+
+### `AutonomicGauge` — class
+
+#### `constructor(scene, parent)`
+
+- **Purpose:** Build central homeostasis bar (0 = blue brake, 1 = orange accelerator).
+- **Returns:** Gauge instance parented into `parent`.
+
+#### `setValue(v)` / `getValue()` / `nudge(delta)`
+
+- **Purpose:** Read/write clamped gauge in `[0, 1]`.
+
+#### `layout(cx, cy, width)`
+
+- **Purpose:** Position gauge under HUD; scale bar width from viewport.
+
+#### `destroy()`
+
+- **Purpose:** Tear down container.
+
+### `ECGDisplay` — class
+
+#### `constructor(scene, parent)`
+
+- **Purpose:** Procedural ECG strip in HUD band.
+
+#### `setBpm(bpm)` / `setFlatline(on)`
+
+- **Purpose:** Couple trace speed to heart rate; flatline mode for Phase 1.
+
+#### `layout(cx, cy, width)` / `update(dt)` / `destroy()`
+
+- **Purpose:** Responsive placement; scroll polyline each frame; cleanup.
+
+### `Phase1Awakening` — class
+
+#### `constructor(scene)`
+
+- **Purpose:** Draw split zones, reserve bars, gauge, flatline ECG, stroke input.
+- **Returns:** Phase controller owned by scene.
+
+#### `layout()`
+
+- **Purpose:** Recompute zone graphics and HUD positions on resize.
+
+#### `update(dt)`
+
+- **Purpose:** Advance stroke charge, gauge bias preview, ECG flatline animation.
+
+#### `destroy()`
+
+- **Purpose:** Tear down stroke input, gauge, ECG, graphics.
+
+**Private `onThreshold(bias)`:** Freeze input → brief nerve-fiber FX → `scene.enterPhase2(bias)`.
+
+### `MoleculePool` — class
+
+#### `constructor(scene, parent, capacity?)`
+
+- **Purpose:** Preallocate inactive circle sprites for molecules.
+
+#### `spawn(kind, x, y, vx?, vy?)`
+
+- **Purpose:** Activate a pool slot with kind-specific colour.
+- **Returns:** `PooledMolecule | null` (null if pool exhausted).
+
+#### `recycle(m)` / `destroy()`
+
+- **Purpose:** Return slot to pool or tear down all sprites.
+
+### `CleftSystem` — class
+
+#### `constructor(scene, pool, onGaugeDelta)`
+
+- **Purpose:** SA node band with M₂ and β₁ receptors; forwards bind deltas to gauge.
+
+#### `layout(left, right, top, bottom)`
+
+- **Purpose:** Place tissue rect and receptor hit circles.
+
+#### `update(dt, gaugeValue)`
+
+- **Purpose:** Drift cleft molecules, bind on overlap, neutralize ACh/NE pairs, homeostasis drift when idle.
+
+#### `destroy()`
+
+- **Purpose:** Remove cleft graphics.
+
+### `ParasympatheticTerminal` — class
+
+#### `constructor(scene, pool, onRelease, onEnzymeTap)`
+
+- **Purpose:** P1 left terminal — drag ACh dots into vesicle, release at lower membrane, MAO tap zone.
+
+#### `layout(left, right, top, bottom)`
+
+- **Purpose:** Position vesicle, membrane band, enzyme hotspot, spawn free dots.
+
+#### `destroy()`
+
+- **Purpose:** Remove pointer handlers and graphics.
+
+### `SympatheticTerminal` — class
+
+#### `constructor(scene, pool, onRelease, onEnzymeTap)`
+
+- **Purpose:** P2 right terminal — drag NE dots into vesicle, release at upper membrane, AChE tap zone.
+
+#### `layout(left, right, top, bottom)` / `destroy()`
+
+- **Purpose:** Mirror of parasympathetic terminal on the right half.
+
+### `Phase2Duel` — class
+
+#### `constructor(scene, initialBias, onEnd)`
+
+- **Purpose:** Orchestrate gauge, ECG, HUD, pool, cleft, both terminals, 60s timer.
+- **Returns:** Phase controller; calls `onEnd(outcome)` on timer or early win.
+
+#### `layout()` / `update(dt)` / `destroy()`
+
+- **Purpose:** Three-band layout; BPM from gauge; mood wash; sustain tracking for early win.
+
+### `AutonomicHud` — class
+
+#### `constructor(scene, parent)`
+
+- **Purpose:** Timer, BPM readout, P1/P2 hint lines.
+
+#### `layout(w, h, timeLeft)` / `setTimer(sec)` / `setBpm(bpm)` / `destroy()`
+
+- **Purpose:** Responsive HUD placement and live updates.
+
+### `AutonomicResultOverlay` — class
+
+#### `constructor(scene, outcome, onPlayAgain, onMenu)`
+
+- **Purpose:** End card via `computeResultLayout` — Bradycardia, Tachycardia, or Homeostasis copy.
+- **Returns:** Overlay with Play Again / Menu buttons.
+
+#### `destroy()`
+
+- **Purpose:** Remove veil and card.
+
+### `AutonomicArmWrestleScene` — class `Phaser.Scene`
+
+#### `constructor()`
+
+- **Purpose:** Register scene key `"autonomic-arm-wrestle"`.
+
+#### `create()`
+
+- **Purpose:** Back button, ESC handler, resize listeners, start Phase 1.
+
+#### `update(time, delta)`
+
+- **Purpose:** Delegate to active phase controller.
+
+#### `enterPhase2(initialBias)` / `enterResult(outcome)`
+
+- **Purpose:** Phase FSM transitions; tear down prior phase, construct next.
+
+#### `shutdown()`
+
+- **Purpose:** Remove listeners; destroy all phase objects.
+
+**Private helpers:** `startPhase1`, `restart`, `goMenu`, `teardownPhases`, `scheduleResize`, `applyResize`.
 
 ---
 

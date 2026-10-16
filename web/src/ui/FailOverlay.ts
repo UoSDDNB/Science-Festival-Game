@@ -19,7 +19,13 @@ export class FailOverlay {
     this.scene = scene;
     const w = scene.scale.width;
     const h = scene.scale.height;
-    this.L = computeResultLayout(w, h, true);
+    this.L = computeResultLayout(
+      scene,
+      w,
+      h,
+      true,
+      { title: cfg.title, body: cfg.body, biology: cfg.biologyLine },
+    );
 
     this.veil = scene.add
       .rectangle(0, 0, w, h, 0xff0a18, 0)
@@ -46,9 +52,9 @@ export class FailOverlay {
     const { cardW, cardH, wrap } = this.L;
     const card = scene.add.graphics();
     card.fillStyle(0x180000, 0.95);
-    card.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 18);
+    card.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, this.L.radius);
     card.lineStyle(2.5, 0xff5a4a, 0.85);
-    card.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 18);
+    card.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, this.L.radius);
     container.add(card);
 
     const title = scene.add
@@ -84,8 +90,18 @@ export class FailOverlay {
       .setOrigin(0.5, 0.5);
     container.add(biology);
 
-    const btnReplay = this.makeButton(-this.L.btnW / 2 - 6, this.L.btnY, "Try Again", onReplay);
-    const btnMenu = this.makeButton(this.L.btnW / 2 + 6, this.L.btnY, "Menu", onMenu);
+    const btnReplay = this.makeButton(
+      this.L.stackButtons ? 0 : -this.L.btnW / 2 - 6,
+      this.L.stackButtons ? this.L.btnY : this.L.btnY,
+      "Try Again",
+      onReplay,
+    );
+    const btnMenu = this.makeButton(
+      this.L.stackButtons ? 0 : this.L.btnW / 2 + 6,
+      this.L.stackButtons ? this.L.btnY2 : this.L.btnY,
+      "Menu",
+      onMenu,
+    );
     container.add(btnReplay);
     container.add(btnMenu);
 
@@ -105,7 +121,7 @@ export class FailOverlay {
     const t = this.scene.add
       .text(0, 0, text, {
         fontFamily: "ui-sans-serif, system-ui",
-        fontSize: "18px",
+        fontSize: `${this.L.btnFontSize}px`,
         color: "#fff0e8",
       })
       .setOrigin(0.5, 0.5);

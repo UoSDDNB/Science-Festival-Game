@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { LevelDef } from "../types";
 import { hexToInt } from "./palette";
-import { neutrophilDisplaySize } from "../immune_rescue/assets";
+import { neutrophilDisplayDimensions, neutrophilDisplaySize } from "../immune_rescue/assets";
 
 /**
  * Procedural creature silhouettes. Stylised, flat, intentionally low-effort —
@@ -176,6 +176,135 @@ function buildDragon(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
 }
 
 function buildMastCell(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
+  if (scene.textures.exists("allergy-mast-cell")) {
+    return buildMastCellFromImage(scene, def);
+  }
+  return buildMastCellProcedural(scene, def);
+}
+
+const MAST_CELL_ASPECT = 2100 / 3000;
+
+function mastCellDisplaySize(sizeScale: number): { w: number; h: number } {
+  const w = 180 * sizeScale;
+  return { w, h: w * MAST_CELL_ASPECT };
+}
+
+type MastGranule = { x: number; y: number; dot: Phaser.GameObjects.Graphics };
+
+function mastCellDegranulationBurst(
+  scene: Phaser.Scene,
+  c: Phaser.GameObjects.Container,
+  cellRadius: number,
+  granules: MastGranule[],
+  sprite: Phaser.GameObjects.Image | null,
+  baseW: number,
+  baseH: number,
+): void {
+  const flash = scene.add.image(0, 0, "glow-hot");
+  flash.setBlendMode(Phaser.BlendModes.ADD);
+  flash.setScale(cellRadius * 0.025);
+  flash.setAlpha(0);
+  c.add(flash);
+  scene.tweens.add({ targets: flash, alpha: 0.95, scale: cellRadius * 0.06, duration: 220, yoyo: true });
+
+  for (const g of granules) {
+    const dx = g.x;
+    const dy = g.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const throwDist = cellRadius * (1.6 + Math.random() * 1.2);
+    scene.tweens.add({
+      targets: g.dot,
+      x: nx * throwDist,
+      y: ny * throwDist,
+      alpha: 0,
+      scale: 0.2,
+      duration: 700 + Math.random() * 400,
+      ease: "Cubic.Out",
+    });
+  }
+
+  if (sprite) {
+    scene.tweens.add({
+      targets: sprite,
+      alpha: 0.82,
+      duration: 180,
+      yoyo: true,
+      repeat: 1,
+    });
+    scene.tweens.add({
+      targets: { s: 1 },
+      s: 1.08,
+      duration: 220,
+      yoyo: true,
+      onUpdate: (_t, target) => {
+        const scale = (target as { s: number }).s;
+        sprite.setDisplaySize(baseW * scale, baseH * scale);
+      },
+    });
+  }
+
+  for (let i = 0; i < 36; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = 200 + Math.random() * 300;
+    const dot = scene.add.image(0, 0, "spark");
+    dot.setBlendMode(Phaser.BlendModes.ADD);
+    dot.setTint(0xff6a8a);
+    dot.setScale(0.3 + Math.random() * 0.3);
+    c.add(dot);
+    scene.tweens.add({
+      targets: dot,
+      x: Math.cos(ang) * speed,
+      y: Math.sin(ang) * speed,
+      alpha: 0,
+      duration: 900 + Math.random() * 600,
+      ease: "Cubic.Out",
+      onComplete: () => dot.destroy(),
+    });
+  }
+}
+
+function buildMastCellFromImage(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
+  const c = scene.add.container(def.creature.x, def.creature.y);
+  c.setDepth(6);
+  const s = def.creature.size;
+  const cellRadius = 90 * s;
+  const { w: baseW, h: baseH } = mastCellDisplaySize(s);
+
+  const sprite = scene.add.image(0, 0, "allergy-mast-cell");
+  sprite.setDisplaySize(baseW, baseH);
+  c.add(sprite);
+
+  const halo = scene.add.image(0, 0, "glow-warm");
+  halo.setBlendMode(Phaser.BlendModes.ADD);
+  halo.setAlpha(0).setScale(cellRadius * 0.025);
+  c.add(halo);
+
+  let beat = 0;
+  let burst = false;
+
+  return {
+    container: c,
+    setLifeSignal: (t: number) => {
+      beat += 0.05;
+      const tt = clamp(t, 0, 1);
+      const pulse = Math.sin(beat * (1.5 + tt * 4));
+      const pulseScale = 1 + tt * 0.03 + pulse * 0.015 * tt;
+      sprite.setDisplaySize(baseW * pulseScale, baseH * pulseScale);
+      halo.setAlpha(tt * 0.55);
+      halo.setScale(cellRadius * (0.022 + tt * 0.012));
+    },
+    iceDissolve: () => {},
+    setThawed: (thawed: boolean) => {
+      if (!thawed || burst) return;
+      burst = true;
+      mastCellDegranulationBurst(scene, c, cellRadius, [], sprite, baseW, baseH);
+    },
+  };
+}
+
+function buildMastCellProcedural(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
   const c = scene.add.container(def.creature.x, def.creature.y);
   c.setDepth(6);
   const skin = hexToInt(def.palette.creature);
@@ -228,7 +357,7 @@ function buildMastCell(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
   c.add(igeG);
 
   // Granules — small dots scattered inside the cell. Tracked so we can animate them on win.
-  type Granule = { x: number; y: number; r: number; dot: Phaser.GameObjects.Graphics; baseGlow: number };
+  type Granule = MastGranule & { r: number; baseGlow: number };
   const granules: Granule[] = [];
   for (let i = 0; i < 22; i++) {
     // Stable pseudo-random positions, avoiding the nucleus
@@ -289,54 +418,7 @@ function buildMastCell(scene: Phaser.Scene, def: LevelDef): CreatureVisual {
     setThawed: (thawed: boolean) => {
       if (!thawed || burst) return;
       burst = true;
-      // Burst: granules fly outward, histamine particles spray, cell flashes
-      const flash = scene.add.image(0, 0, "glow-hot");
-      flash.setBlendMode(Phaser.BlendModes.ADD);
-      flash.setScale(cellRadius * 0.025);
-      flash.setAlpha(0);
-      c.add(flash);
-      scene.tweens.add({ targets: flash, alpha: 0.95, scale: cellRadius * 0.06, duration: 220, yoyo: true });
-
-      for (const g of granules) {
-        const dx = g.x;
-        const dy = g.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const throwDist = cellRadius * (1.6 + Math.random() * 1.2);
-        scene.tweens.add({
-          targets: g.dot,
-          x: nx * throwDist,
-          y: ny * throwDist,
-          alpha: 0,
-          scale: 0.2,
-          duration: 700 + Math.random() * 400,
-          ease: "Cubic.Out",
-        });
-      }
-
-      // Histamine spray — small additive particles radiating outward from the cell.
-      // Children of the container so the worldLayer transform applies cleanly.
-      for (let i = 0; i < 36; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const speed = 200 + Math.random() * 300;
-        const dot = scene.add.image(0, 0, "spark");
-        dot.setBlendMode(Phaser.BlendModes.ADD);
-        dot.setTint(0xff6a8a);
-        dot.setScale(0.3 + Math.random() * 0.3);
-        c.add(dot);
-        const tx = Math.cos(ang) * speed;
-        const ty = Math.sin(ang) * speed;
-        scene.tweens.add({
-          targets: dot,
-          x: tx,
-          y: ty,
-          alpha: 0,
-          duration: 900 + Math.random() * 600,
-          ease: "Cubic.Out",
-          onComplete: () => dot.destroy(),
-        });
-      }
+      mastCellDegranulationBurst(scene, c, cellRadius, granules, null, cellRadius * 2, cellRadius * 2);
     },
   };
 }
@@ -412,13 +494,14 @@ export function buildNeutrophilAt(
   c.setDepth(6);
   const s = size;
   const baseDisplay = neutrophilDisplaySize(s);
+  const { w: baseW, h: baseH } = neutrophilDisplayDimensions(s);
 
   let sprite: Phaser.GameObjects.Image | null = null;
   let graphics: Phaser.GameObjects.Graphics | null = null;
 
   if (scene.textures.exists("immune-neutrophil")) {
     sprite = scene.add.image(0, 0, "immune-neutrophil");
-    sprite.setDisplaySize(baseDisplay, baseDisplay);
+    sprite.setDisplaySize(baseW, baseH);
     c.add(sprite);
   } else {
     const skin = hexToInt(skinHex);
@@ -426,7 +509,7 @@ export function buildNeutrophilAt(
     graphics = scene.add.graphics();
     const r = baseDisplay;
     graphics.fillStyle(skin, 0.95);
-    graphics.fillEllipse(0, 0, r, r * 0.9);
+    graphics.fillCircle(0, 0, r * 0.5);
     graphics.fillStyle(accent, 0.9);
     graphics.fillEllipse(-r * 0.2, 0, r * 0.35, r * 0.28);
     graphics.fillEllipse(r * 0.05, r * 0.08, r * 0.32, r * 0.26);
@@ -451,9 +534,9 @@ export function buildNeutrophilAt(
       const glow = baseDisplay * (0.85 + p * 0.15 + tt * 0.1);
       heart.setDisplaySize(glow, glow);
       // Pulse via display size only — never setScale on huge source textures.
-      const pulse = baseDisplay * (1 + tt * 0.02 + p * 0.01 * tt);
-      if (sprite) sprite.setDisplaySize(pulse, pulse);
-      else if (graphics) graphics.setScale(pulse / baseDisplay);
+      const pulseScale = 1 + tt * 0.02 + p * 0.01 * tt;
+      if (sprite) sprite.setDisplaySize(baseW * pulseScale, baseH * pulseScale);
+      else if (graphics) graphics.setScale(pulseScale);
     },
     iceDissolve: () => {
       // not iced

@@ -4,7 +4,7 @@ import { IMMUNE_TEX, preloadImmuneImages, punchBlackMatte } from "../immune_resc
 
 /**
  * BootScene — load Immune Rescue PNGs, generate procedural textures, then
- * jump to the level select.
+ * start gameplay (Infection detected intro).
  */
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -19,6 +19,6 @@ export class BootScene extends Phaser.Scene {
     punchBlackMatte(this, IMMUNE_TEX.bacteria);
     punchBlackMatte(this, IMMUNE_TEX.neutrophil);
     buildProceduralTextures(this);
-    this.scene.start("level-select");
+    this.scene.start("immune-rescue", { mode: "single" });
   }
 }
